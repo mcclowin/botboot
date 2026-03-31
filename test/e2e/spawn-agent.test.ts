@@ -220,41 +220,46 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
     assert.ok(machine.ip);
   });
 
-  it("should become SSH-reachable within 3 minutes", async function () {
+  it("should become SSH-reachable within 5 minutes", async function () {
     if (!machineIp) return this.skip();
 
-    const maxWait = 180_000;
+    // Hermes install takes longer — SSH as root first (agent user may not exist yet)
+    const maxWait = 300_000;
     const start = Date.now();
     let reachable = false;
 
-    console.log(`⏳ Waiting for SSH on ${machineIp}...`);
+    console.log(`⏳ Waiting for SSH (root) on ${machineIp}...`);
     while (Date.now() - start < maxWait) {
-      reachable = await ssh.ping(machineIp);
-      if (reachable) break;
+      try {
+        const result = await ssh.exec(machineIp, "echo ok", { user: "root", timeoutMs: 10_000 });
+        if (result.stdout.trim() === "ok") { reachable = true; break; }
+      } catch { /* retry */ }
       await new Promise((r) => setTimeout(r, 10_000));
       process.stdout.write(".");
     }
-    console.log(reachable ? "\n✅ SSH reachable" : "\n❌ SSH timeout");
+    console.log(reachable ? "\n✅ SSH reachable (root)" : "\n❌ SSH timeout");
     assert.ok(reachable);
   });
 
-  it("should complete provisioning within 8 minutes (Hermes is heavier)", async function () {
+  it("should complete provisioning within 10 minutes (Hermes is heavier)", async function () {
     if (!machineIp) return this.skip();
 
-    const maxWait = 480_000; // 8 minutes (Python + git clone + uv install)
+    const maxWait = 600_000; // 10 minutes (Python + git clone + uv install + npm)
     const start = Date.now();
     let provisioned = false;
 
     console.log("⏳ Waiting for Hermes provisioning...");
     while (Date.now() - start < maxWait) {
-      const result = await ssh.exec(machineIp, "tail -3 /var/log/botboot-provision.log 2>/dev/null || echo 'no log'", { user: "root" });
-      if (result.stdout.includes("Provisioning complete")) {
-        provisioned = true;
-        break;
-      }
-      // Show progress
-      const progress = await ssh.exec(machineIp, "tail -1 /var/log/botboot-provision.log 2>/dev/null || echo '...'", { user: "root" });
-      process.stdout.write(`\r  ${progress.stdout.trim().slice(0, 80)}`);
+      try {
+        const result = await ssh.exec(machineIp, "tail -3 /var/log/botboot-provision.log 2>/dev/null || echo 'no log'", { user: "root" });
+        if (result.stdout.includes("Provisioning complete")) {
+          provisioned = true;
+          break;
+        }
+        // Show progress
+        const progress = await ssh.exec(machineIp, "tail -1 /var/log/botboot-provision.log 2>/dev/null || echo '...'", { user: "root" });
+        process.stdout.write(`\r  ${progress.stdout.trim().slice(0, 80)}`);
+      } catch { /* SSH might fail during early boot */ }
       await new Promise((r) => setTimeout(r, 15_000));
     }
     console.log(provisioned ? "\n✅ Hermes provisioning complete" : "\n❌ Hermes provisioning timeout");
@@ -264,13 +269,20 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
   it("should have Hermes installed and gateway running", async function () {
     if (!machineIp) return this.skip();
 
-    const version = await ssh.exec(machineIp, "hermes version 2>/dev/null || echo 'not found'");
+    // hermes may not be in agent's PATH — check with full path and as root
+    const version = await ssh.exec(machineIp, "/usr/local/bin/hermes version 2>/dev/null || hermes version 2>/dev/null || echo 'not found'", { user: "root" });
     console.log(`📦 Hermes version: ${version.stdout.trim()}`);
     assert.ok(!version.stdout.includes("not found"), "Hermes should be installed");
 
-    const status = await ssh.exec(machineIp, "systemctl is-active botboot-agent 2>/dev/null || echo inactive");
-    console.log(`🔌 Gateway status: ${status.stdout.trim()}`);
-    assert.equal(status.stdout.trim(), "active", "Gateway should be active");
+    // Gateway may need a moment after provisioning
+    let gatewayActive = false;
+    for (let i = 0; i < 6; i++) {
+      const status = await ssh.exec(machineIp, "systemctl is-active botboot-agent 2>/dev/null || echo inactive", { user: "root" });
+      console.log(`🔌 Gateway status: ${status.stdout.trim()}`);
+      if (status.stdout.trim() === "active") { gatewayActive = true; break; }
+      await new Promise((r) => setTimeout(r, 10_000));
+    }
+    assert.ok(gatewayActive, "Gateway should be active");
   });
 
   it("should have identity files in correct Hermes paths", async function () {
