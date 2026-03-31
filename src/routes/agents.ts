@@ -17,6 +17,7 @@ import { Hono } from "hono";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { db } from "../lib/db.js";
 import * as ssh from "../lib/ssh.js";
+import { decrypt } from "../lib/crypto.js";
 import { getProvider } from "../providers/index.js";
 import { getRuntime, listRuntimes } from "../runtimes/index.js";
 import { buildCloudInit } from "../lib/cloud-init.js";
@@ -301,10 +302,18 @@ async function resolveSecrets(accountId: string, agentId?: string): Promise<Reco
   if (e.PLATFORM_FIRECRAWL_KEY) secrets.FIRECRAWL_API_KEY = e.PLATFORM_FIRECRAWL_KEY;
 
   // Tier 2: Account-level secrets
-  // TODO: decrypt from db.getSecrets(accountId)
+  const accountSecrets = await db.getSecrets(accountId);
+  for (const s of accountSecrets) {
+    secrets[s.key_name] = decrypt(s.encrypted);
+  }
 
   // Tier 3: Agent-level overrides
-  // TODO: decrypt from db.getSecrets(accountId, agentId)
+  if (agentId) {
+    const agentSecrets = await db.getSecrets(accountId, agentId);
+    for (const s of agentSecrets) {
+      secrets[s.key_name] = decrypt(s.encrypted);
+    }
+  }
 
   return secrets;
 }

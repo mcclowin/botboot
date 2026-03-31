@@ -88,8 +88,9 @@ describe("Database Integration", () => {
     });
   });
 
+  let testAgentId: string;
+
   describe("Agents", () => {
-    let testAgentId: string;
 
     it("should create an agent", async () => {
       const agent = await db.createAgent({
@@ -126,12 +127,51 @@ describe("Database Integration", () => {
       const agent = await db.getAgent(testAccountId, testAgentId);
       assert.equal(agent?.state, "running");
     });
+  });
 
-    it("should soft-delete agent", async () => {
-      await db.deleteAgent(testAgentId);
-      const agents = await db.listAgents(testAccountId);
-      // Deleted agents shouldn't appear in list
-      assert.ok(!agents.find((a) => a.id === testAgentId));
+  describe("Usage Logs", () => {
+    it("should upsert and summarize daily usage", async () => {
+      await db.upsertUsageLog({
+        agent_id: testAgentId,
+        usage_date: "2026-03-31",
+        runtime: "openclaw",
+        provider: "anthropic",
+        model: "claude-sonnet-4",
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_tokens: 25,
+        cache_write_tokens: 10,
+        reasoning_tokens: 5,
+        total_tokens: 190,
+        estimated_cost_usd: 0.12,
+      });
+
+      await db.upsertUsageLog({
+        agent_id: testAgentId,
+        usage_date: "2026-03-31",
+        runtime: "openclaw",
+        provider: "anthropic",
+        model: "claude-sonnet-4",
+        input_tokens: 200,
+        output_tokens: 80,
+        cache_read_tokens: 30,
+        cache_write_tokens: 20,
+        reasoning_tokens: 10,
+        total_tokens: 340,
+        estimated_cost_usd: 0.22,
+      });
+
+      const summary = await db.getAgentUsageSummary(testAgentId, 3650) as any;
+      assert.equal(Number(summary.totals.input_tokens), 200);
+      assert.equal(Number(summary.totals.output_tokens), 80);
+      assert.equal(Number(summary.totals.total_tokens), 340);
+      assert.equal(Number(summary.by_model[0].estimated_cost_usd), 0.22);
+    });
+
+    it("should summarize account usage", async () => {
+      const summary = await db.getAccountUsageSummary(testAccountId, 3650) as any;
+      assert.equal(Number(summary.totals.agents_count), 1);
+      assert.equal(Number(summary.totals.total_tokens), 340);
     });
   });
 
@@ -162,6 +202,14 @@ describe("Database Integration", () => {
 
       const secrets = await db.getSecrets(testAccountId);
       assert.ok(!secrets.find((s) => s.key_name === "ANTHROPIC_API_KEY"));
+    });
+  });
+
+  describe("Cleanup", () => {
+    it("should soft-delete agent", async () => {
+      await db.deleteAgent(testAgentId);
+      const agents = await db.listAgents(testAccountId);
+      assert.ok(!agents.find((a) => a.id === testAgentId));
     });
   });
 });

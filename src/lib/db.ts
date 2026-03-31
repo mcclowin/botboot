@@ -50,6 +50,26 @@ export interface AccountSecret {
   updated_at: string;
 }
 
+export interface UsageLog {
+  id?: string;
+  agent_id: string;
+  usage_date: string;
+  runtime: string;
+  provider: string | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  source?: string;
+  last_polled_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // ── Connection ─────────────────────────────────────────────────────────
 
 const sql = postgres(env.DATABASE_URL, {
@@ -158,20 +178,12 @@ export const db = {
   },
 
   async updateAgent(agentId: string, updates: Partial<Agent>): Promise<void> {
-    const sets: string[] = [];
-    const values: Record<string, unknown> = {};
-
-    if (updates.state !== undefined) values.state = updates.state;
-    if (updates.ip !== undefined) values.ip = updates.ip;
-    if (updates.server_id !== undefined) values.server_id = updates.server_id;
-    if (updates.config !== undefined) values.config = JSON.stringify(updates.config);
-
-    // Build dynamic update
     await sql`
       UPDATE agents SET
         state = COALESCE(${updates.state ?? null}, state),
         ip = COALESCE(${updates.ip ?? null}, ip),
         server_id = COALESCE(${updates.server_id ?? null}, server_id),
+        config = COALESCE(${updates.config ? JSON.stringify(updates.config) : null}::jsonb, config),
         updated_at = now()
       WHERE id = ${agentId}
     `;
@@ -233,6 +245,127 @@ export const db = {
       `;
     }
     return result.count > 0;
+  },
+
+  // ── Usage logs ─────────────────────────────────────────────────────
+
+  async upsertUsageLog(log: UsageLog): Promise<void> {
+    await sql`
+      INSERT INTO usage_logs (
+        agent_id, usage_date, runtime, provider, model,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+        reasoning_tokens, total_tokens, estimated_cost_usd, source, last_polled_at
+      ) VALUES (
+        ${log.agent_id}, ${log.usage_date}, ${log.runtime}, ${log.provider}, ${log.model},
+        ${log.input_tokens}, ${log.output_tokens}, ${log.cache_read_tokens}, ${log.cache_write_tokens},
+        ${log.reasoning_tokens}, ${log.total_tokens}, ${log.estimated_cost_usd}, ${log.source || 'poll'}, now()
+      )
+      ON CONFLICT (agent_id, usage_date, runtime, provider, model)
+      DO UPDATE SET
+        input_tokens = EXCLUDED.input_tokens,
+        output_tokens = EXCLUDED.output_tokens,
+        cache_read_tokens = EXCLUDED.cache_read_tokens,
+        cache_write_tokens = EXCLUDED.cache_write_tokens,
+        reasoning_tokens = EXCLUDED.reasoning_tokens,
+        total_tokens = EXCLUDED.total_tokens,
+        estimated_cost_usd = EXCLUDED.estimated_cost_usd,
+        source = EXCLUDED.source,
+        last_polled_at = now(),
+        updated_at = now()
+    `;
+  },
+
+  async getAgentUsageSummary(agentId: string, days = 30): Promise<Record<string, unknown>> {
+    const totals = await sql<any[]>`
+      SELECT
+        COALESCE(sum(input_tokens), 0) AS input_tokens,
+        COALESCE(sum(output_tokens), 0) AS output_tokens,
+        COALESCE(sum(cache_read_tokens), 0) AS cache_read_tokens,
+        COALESCE(sum(cache_write_tokens), 0) AS cache_write_tokens,
+        COALESCE(sum(reasoning_tokens), 0) AS reasoning_tokens,
+        COALESCE(sum(total_tokens), 0) AS total_tokens,
+        COALESCE(sum(estimated_cost_usd), 0) AS estimated_cost_usd
+      FROM usage_logs
+      WHERE agent_id = ${agentId}
+        AND usage_date >= current_date - ${days - 1} * interval '1 day'
+    `;
+
+    const byModel = await sql<any[]>`
+      SELECT provider, model,
+        sum(input_tokens) AS input_tokens,
+        sum(output_tokens) AS output_tokens,
+        sum(cache_read_tokens) AS cache_read_tokens,
+        sum(cache_write_tokens) AS cache_write_tokens,
+        sum(reasoning_tokens) AS reasoning_tokens,
+        sum(total_tokens) AS total_tokens,
+        sum(estimated_cost_usd) AS estimated_cost_usd
+      FROM usage_logs
+      WHERE agent_id = ${agentId}
+        AND usage_date >= current_date - ${days - 1} * interval '1 day'
+      GROUP BY provider, model
+      ORDER BY estimated_cost_usd DESC, total_tokens DESC
+    `;
+
+    const daily = await sql<any[]>`
+      SELECT usage_date, 
+        sum(input_tokens) AS input_tokens,
+        sum(output_tokens) AS output_tokens,
+        sum(cache_read_tokens) AS cache_read_tokens,
+        sum(cache_write_tokens) AS cache_write_tokens,
+        sum(reasoning_tokens) AS reasoning_tokens,
+        sum(total_tokens) AS total_tokens,
+        sum(estimated_cost_usd) AS estimated_cost_usd
+      FROM usage_logs
+      WHERE agent_id = ${agentId}
+        AND usage_date >= current_date - ${days - 1} * interval '1 day'
+      GROUP BY usage_date
+      ORDER BY usage_date DESC
+    `;
+
+    return {
+      period_days: days,
+      totals: totals[0] || {},
+      by_model: byModel,
+      daily,
+    };
+  },
+
+  async getAccountUsageSummary(accountId: string, days = 30): Promise<Record<string, unknown>> {
+    const totals = await sql<any[]>`
+      SELECT
+        count(DISTINCT u.agent_id) AS agents_count,
+        COALESCE(sum(u.input_tokens), 0) AS input_tokens,
+        COALESCE(sum(u.output_tokens), 0) AS output_tokens,
+        COALESCE(sum(u.cache_read_tokens), 0) AS cache_read_tokens,
+        COALESCE(sum(u.cache_write_tokens), 0) AS cache_write_tokens,
+        COALESCE(sum(u.reasoning_tokens), 0) AS reasoning_tokens,
+        COALESCE(sum(u.total_tokens), 0) AS total_tokens,
+        COALESCE(sum(u.estimated_cost_usd), 0) AS estimated_cost_usd
+      FROM usage_logs u
+      JOIN agents a ON a.id = u.agent_id
+      WHERE a.account_id = ${accountId}
+        AND u.usage_date >= current_date - ${days - 1} * interval '1 day'
+    `;
+
+    const byAgent = await sql<any[]>`
+      SELECT a.id AS agent_id, a.name, a.runtime,
+        sum(u.input_tokens) AS input_tokens,
+        sum(u.output_tokens) AS output_tokens,
+        sum(u.total_tokens) AS total_tokens,
+        sum(u.estimated_cost_usd) AS estimated_cost_usd
+      FROM usage_logs u
+      JOIN agents a ON a.id = u.agent_id
+      WHERE a.account_id = ${accountId}
+        AND u.usage_date >= current_date - ${days - 1} * interval '1 day'
+      GROUP BY a.id, a.name, a.runtime
+      ORDER BY estimated_cost_usd DESC, total_tokens DESC
+    `;
+
+    return {
+      period_days: days,
+      totals: totals[0] || {},
+      by_agent: byAgent,
+    };
   },
 
   // ── Lifecycle ──────────────────────────────────────────────────────

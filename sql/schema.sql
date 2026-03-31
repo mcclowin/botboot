@@ -53,3 +53,28 @@ CREATE INDEX IF NOT EXISTS idx_agents_account ON agents(account_id);
 CREATE INDEX IF NOT EXISTS idx_agents_state ON agents(state);
 CREATE INDEX IF NOT EXISTS idx_secrets_account ON account_secrets(account_id);
 CREATE INDEX IF NOT EXISTS idx_secrets_agent ON account_secrets(agent_id);
+
+-- Daily usage snapshots per agent/model
+CREATE TABLE IF NOT EXISTS usage_logs (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id          UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  usage_date        DATE NOT NULL,
+  runtime           TEXT NOT NULL,
+  provider          TEXT,
+  model             TEXT NOT NULL,
+  input_tokens      BIGINT DEFAULT 0,
+  output_tokens     BIGINT DEFAULT 0,
+  cache_read_tokens BIGINT DEFAULT 0,
+  cache_write_tokens BIGINT DEFAULT 0,
+  reasoning_tokens  BIGINT DEFAULT 0,
+  total_tokens      BIGINT DEFAULT 0,
+  estimated_cost_usd DOUBLE PRECISION DEFAULT 0,
+  source            TEXT DEFAULT 'poll',
+  last_polled_at    TIMESTAMPTZ DEFAULT now(),
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  updated_at        TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(agent_id, usage_date, runtime, provider, model)
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_logs_agent_date ON usage_logs(agent_id, usage_date DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_logs_date ON usage_logs(usage_date DESC);
