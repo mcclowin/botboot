@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#0F172A"/>
+  
+  <!-- Boot/rocket trail -->
+  <path d="M256 420 L230 380 L240 380 L220 340 L235 340 L215 300 L256 340 L297 300 L277 340 L292 340 L272 380 L282 380 Z" fill="#38BDF8" opacity="0.8"/>
+  <path d="M240 420 L235 400 L256 430 L277 400 L272 420" fill="#0EA5E9" opacity="0.6"/>
+  
+  <!-- Robot body -->
+  <rect x="196" y="140" width="120" height="130" rx="20" fill="#E2E8F0"/>
+  <rect x="206" y="150" width="100" height="110" rx="14" fill="#1E293B"/>
+  
+  <!-- Robot head top (antenna) -->
+  <circle cx="256" cy="120" r="8" fill="#38BDF8"/>
+  <rect x="253" y="120" width="6" height="25" fill="#38BDF8"/>
+  
+  <!-- Eyes -->
+  <circle cx="232" cy="190" r="14" fill="#38BDF8"/>
+  <circle cx="280" cy="190" r="14" fill="#38BDF8"/>
+  <circle cx="232" cy="190" r="6" fill="#0F172A"/>
+  <circle cx="280" cy="190" r="6" fill="#0F172A"/>
+  
+  <!-- Smile -->
+  <path d="M235 225 Q256 245 277 225" stroke="#38BDF8" stroke-width="4" fill="none" stroke-linecap="round"/>
+  
+  <!-- Power button on chest -->
+  <circle cx="256" cy="250" r="8" stroke="#38BDF8" stroke-width="2" fill="none"/>
+  <path d="M256 244 L256 250" stroke="#38BDF8" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Arms -->
+  <rect x="170" y="170" width="26" height="60" rx="13" fill="#E2E8F0"/>
+  <rect x="316" y="170" width="26" height="60" rx="13" fill="#E2E8F0"/>
+  
+  <!-- Lightning bolts on sides -->
+  <path d="M155 200 L145 215 L155 210 L148 230" stroke="#FBBF24" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M357 200 L367 215 L357 210 L364 230" stroke="#FBBF24" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

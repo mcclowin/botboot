@@ -1,0 +1,53 @@
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED REJECTION:", err);
+});
+
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import { serve } from "@hono/node-server";
+import { env } from "./env.js";
+import agentRoutes from "./routes/agents.js";
+import secretRoutes from "./routes/secrets.js";
+import fileRoutes from "./routes/files.js";
+import authRoutes from "./routes/auth.js";
+
+const app = new Hono();
+
+// Middleware
+app.use("*", logger());
+app.use("*", cors({
+  origin: "*",
+  allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization"],
+}));
+
+// Health
+app.get("/health", (c) => c.json({
+  status: "ok",
+  service: "botboot",
+  version: "0.1.0",
+}));
+
+// Routes
+app.route("/v1/agents", agentRoutes);
+app.route("/v1/agents", fileRoutes);     // /v1/agents/:id/files/*
+app.route("/v1/secrets", secretRoutes);
+app.route("/v1/auth", authRoutes);
+
+// 404
+app.notFound((c) => c.json({ error: "Not found" }, 404));
+
+// Error handler
+app.onError((err, c) => {
+  console.error("Unhandled error:", err);
+  return c.json({ error: "Internal server error" }, 500);
+});
+
+// Start
+console.log(`🤖⚡ BotBoot starting on port ${env.PORT}`);
+serve({ fetch: app.fetch, port: env.PORT, hostname: "0.0.0.0" });
+console.log(`✅ BotBoot running at http://localhost:${env.PORT}`);
