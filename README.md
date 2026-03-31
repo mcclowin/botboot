@@ -1,6 +1,21 @@
-# 🤖⚡ BotBoot
+<p align="center">
+  <img src="logo.svg" width="140" alt="BotBoot logo" />
+</p>
 
-**Boot AI agents anywhere. One API.**
+<h1 align="center">BotBoot</h1>
+
+<p align="center">
+  <strong>Boot AI agents anywhere. One API.</strong>
+</p>
+
+<p align="center">
+  <a href="#quick-start-self-hosted">Quick Start</a> ·
+  <a href="#api-reference">API Docs</a> ·
+  <a href="#supported-runtimes">Runtimes</a> ·
+  <a href="#supported-providers">Providers</a>
+</p>
+
+---
 
 BotBoot is an open-source platform for deploying and managing isolated AI agent instances. Each agent gets its own VM with full isolation — persistent memory, messaging channels, and workspace files. Framework-agnostic: supports [OpenClaw](https://openclaw.ai), [Hermes Agent](https://hermes-agent.nousresearch.com), and more.
 
@@ -17,6 +32,37 @@ curl -X POST https://api.botboot.dev/v1/agents \
   }'
 ```
 
+## The Problem
+
+Every AI agent tutorial ends the same way: **a working prototype running on localhost.**
+
+Then what? You need to give each of your users their own persistent agent. You look at your options:
+
+- **Agent frameworks** (LangChain, CrewAI) help you *build* agents but don't *host* them
+- **Cloud platforms** (Railway, Modal, Fly.io) host *apps* but don't understand agents — no concept of identity files, persistent memory, or messaging channels
+- **Cloud AI services** (AWS Bedrock, Vertex AI) are enterprise-only, framework-locked, and don't give per-user isolation
+
+There's a gap in the stack:
+
+```
+                    Agent-Aware
+                        ↑
+                        │
+    CrewAI / LangGraph  │     ??? (THE GAP)
+    (build agents,      │     (deploy isolated agents
+     no hosting)        │      for your users, via API)
+                        │
+   ─────────────────────┼────────────────────────→ Per-User
+                        │                          Isolation
+    Railway / Modal     │     DIY on bare metal
+    (host apps,         │     (build everything
+     not agent-aware)   │      yourself)
+                        │
+                        ↓
+```
+
+**BotBoot fills that gap.** One API to deploy isolated, persistent AI agents — each with their own VM, identity, memory, and messaging channels. Framework-agnostic. Self-hostable. Open source.
+
 ## Why BotBoot?
 
 | Problem | BotBoot Solution |
@@ -26,6 +72,7 @@ curl -X POST https://api.botboot.dev/v1/agents \
 | No per-user agent isolation | Every agent gets its own VM |
 | Locked to one framework | OpenClaw, Hermes, more coming |
 | Complex setup | One API call to deploy |
+| Vendor lock-in | Self-host on your own Hetzner account |
 
 ## Features
 
