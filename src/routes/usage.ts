@@ -11,8 +11,9 @@ import { Hono } from 'hono';
 import { apiKeyAuth } from '../middleware/auth.js';
 import { db } from '../lib/db.js';
 import { pollAndStoreAgentUsage } from '../lib/usage.js';
+import type { AuthEnv } from '../lib/types.js';
 
-const usage = new Hono();
+const usage = new Hono<AuthEnv>();
 usage.use('*', apiKeyAuth);
 
 usage.get('/', async (c) => {

@@ -3,6 +3,18 @@
  *
  * Installs Hermes via uv + git clone, configures via config.yaml + .env,
  * manages via systemd service.
+ *
+ * Key paths (from Hermes docs):
+ *   ~/.hermes/config.yaml       — main config (model, terminal, memory settings)
+ *   ~/.hermes/.env              — API keys + bot tokens
+ *   ~/.hermes/SOUL.md           — agent identity (slot #1 in system prompt)
+ *   ~/.hermes/memories/MEMORY.md — agent's personal notes (2200 char limit)
+ *   ~/.hermes/memories/USER.md   — user profile (1375 char limit)
+ *   ~/.hermes/skills/           — installed skills (agentskills.io compatible)
+ *   ~/.hermes/state.db          — SQLite session DB (usage tracking lives here)
+ *   ~/.hermes/sessions/         — gateway sessions
+ *   ~/.hermes/cron/             — scheduled jobs
+ *   ~/.hermes/logs/             — error + gateway logs (secrets auto-redacted)
  */
 
 import type { RuntimeAdapter, AgentConfig } from "./types.js";
@@ -12,11 +24,14 @@ export class HermesRuntime implements RuntimeAdapter {
 
   installCommands(): string[] {
     return [
-      "# Install uv (Python package manager)",
-      "curl -LsSf https://astral.sh/uv/install.sh | bash",
-      'export PATH="$HOME/.local/bin:$PATH"',
+      "# Install system deps",
+      "apt-get install -y python3 python3-pip git ffmpeg ripgrep",
       "",
-      "# Install Node.js 22 (needed for browser tools + WhatsApp)",
+      "# Install uv (fast Python package manager)",
+      "curl -LsSf https://astral.sh/uv/install.sh | sh",
+      'export PATH="/root/.local/bin:$PATH"',
+      "",
+      "# Install Node.js 22 (needed for browser tools + WhatsApp bridge)",
       "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -",
       "apt-get install -y nodejs",
       "",
@@ -24,17 +39,18 @@ export class HermesRuntime implements RuntimeAdapter {
       "git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes-agent",
       "cd /opt/hermes-agent",
       "",
-      "# Create venv and install",
+      "# Create venv with Python 3.11 and install all extras",
       "uv venv venv --python 3.11",
       'export VIRTUAL_ENV="/opt/hermes-agent/venv"',
       'uv pip install -e ".[all]"',
       "",
-      "# Install Node deps (browser + WhatsApp)",
-      "npm install",
+      "# Install Node deps (browser automation + WhatsApp)",
+      "npm install 2>/dev/null || true",
       "",
       "# Symlink hermes to PATH",
+      "mkdir -p /usr/local/bin",
       "ln -sf /opt/hermes-agent/venv/bin/hermes /usr/local/bin/hermes",
-      "hermes version || true",
+      "hermes version || echo 'hermes installed (version check may need config)'",
     ];
   }
 
@@ -43,14 +59,14 @@ export class HermesRuntime implements RuntimeAdapter {
       "# Create agent user",
       "id agent &>/dev/null || useradd -m -s /bin/bash agent",
       "",
-      "# Sudo permissions",
+      "# Sudo permissions for gateway management",
       "cat > /etc/sudoers.d/agent-gateway << 'SUDOERS'",
       "agent ALL=(ALL) NOPASSWD: /bin/systemctl restart botboot-agent, /bin/systemctl stop botboot-agent, /bin/systemctl start botboot-agent, /bin/systemctl status botboot-agent, /usr/bin/systemctl restart botboot-agent, /usr/bin/systemctl stop botboot-agent, /usr/bin/systemctl start botboot-agent, /usr/bin/systemctl status botboot-agent, /bin/journalctl *, /usr/bin/journalctl *",
       "SUDOERS",
       "chmod 440 /etc/sudoers.d/agent-gateway",
       "",
-      "# Create Hermes directories",
-      "su - agent -c 'mkdir -p ~/.hermes/{cron,sessions,logs,memories,skills,pairing,hooks,image_cache,audio_cache}'",
+      "# Create Hermes directory structure",
+      "su - agent -c 'mkdir -p ~/.hermes/{cron,sessions,logs,memories,skills,pairing,hooks,image_cache,audio_cache,whatsapp/session}'",
     ];
   }
 
@@ -70,7 +86,7 @@ export class HermesRuntime implements RuntimeAdapter {
       `echo '${envB64}' | base64 -d > /home/agent/.hermes/.env`,
       "chmod 600 /home/agent/.hermes/.env",
       "",
-      "# Write platform secrets for tools",
+      "# Write platform secrets for tool env vars",
       "mkdir -p /etc/botboot",
       "cat > /etc/botboot/secrets.env << 'SECRETS'",
       ...Object.entries(secrets)
@@ -85,7 +101,6 @@ export class HermesRuntime implements RuntimeAdapter {
     const commands: string[] = ["# Write identity files"];
     for (const [path, content] of Object.entries(files)) {
       const b64 = Buffer.from(content).toString("base64");
-      // Map standard files to Hermes paths
       const fullPath = this.resolveFilePath(path);
       const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
       commands.push(`mkdir -p ${JSON.stringify(dir)}`);
@@ -127,7 +142,6 @@ WantedBy=multi-user.target`;
   }
 
   workspacePath(): string {
-    // Hermes uses CWD or ~ as workspace
     return "/home/agent";
   }
 
@@ -136,28 +150,49 @@ WantedBy=multi-user.target`;
   }
 
   /**
-   * Map standard file paths to Hermes-specific locations.
-   * SOUL.md → ~/.hermes/SOUL.md
-   * USER.md → ~/.hermes/memories/USER.md
-   * AGENTS.md → stays in workspace
-   * memory/* → ~/.hermes/memories/*
+   * Map standard BotBoot file paths to Hermes-specific locations.
+   *
+   * Hermes file layout (from docs):
+   *   SOUL.md       → ~/.hermes/SOUL.md (identity, slot #1 in system prompt)
+   *   USER.md       → ~/.hermes/memories/USER.md (user profile, 1375 char limit)
+   *   MEMORY.md     → ~/.hermes/memories/MEMORY.md (agent notes, 2200 char limit)
+   *   AGENTS.md     → ~/AGENTS.md (working directory context file)
+   *   WORKFLOWS.md  → ~/WORKFLOWS.md (working directory context file)
+   *   TOOLS.md      → ~/TOOLS.md (working directory context file)
+   *   memory/*      → ~/.hermes/memories/* (persistent memory files)
+   *   skills/*      → ~/.hermes/skills/* (skill definitions)
+   *   Everything else → ~/  (agent home = working directory)
    */
   private resolveFilePath(path: string): string {
     if (path === "SOUL.md") return "/home/agent/.hermes/SOUL.md";
     if (path === "USER.md") return "/home/agent/.hermes/memories/USER.md";
     if (path === "MEMORY.md") return "/home/agent/.hermes/memories/MEMORY.md";
     if (path.startsWith("memory/")) return `/home/agent/.hermes/memories/${path.slice(7)}`;
+    if (path.startsWith("skills/")) return `/home/agent/.hermes/skills/${path.slice(7)}`;
+    // Context files (AGENTS.md, WORKFLOWS.md, etc.) go in CWD = home
     return `/home/agent/${path}`;
   }
 
   private buildConfigYaml(config: AgentConfig): string {
     const model = config.model || "anthropic/claude-sonnet-4";
+
+    // Determine provider from model string
+    let provider = "openrouter";
+    if (model.startsWith("anthropic/") || model.startsWith("claude")) provider = "anthropic";
+    else if (model.startsWith("openai/") || model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")) provider = "openai";
+    else if (model.startsWith("google/") || model.startsWith("gemini")) provider = "google";
+
     return `# BotBoot — Hermes Agent Config
-model: "${model}"
+# Generated at provisioning time. Edit via BotBoot API or SSH.
+
+model:
+  default: "${model}"
+  provider: "${provider}"
 
 terminal:
   backend: local
   timeout: 180
+  persistent_shell: false
 
 memory:
   memory_enabled: true
@@ -167,28 +202,37 @@ memory:
 
 display:
   tool_progress: all
+  background_process_notifications: result
+
+# Gateway session reset: idle after 24 hours
+gateway:
+  session_reset:
+    mode: idle
+    idle_minutes: 1440
 `;
   }
 
   private buildEnvFile(config: AgentConfig, secrets: Record<string, string>): string {
-    const lines: string[] = ["# BotBoot — Hermes Agent Secrets"];
+    const lines: string[] = [
+      "# BotBoot — Hermes Agent Secrets",
+      "# Generated at provisioning time. Managed via BotBoot API.",
+    ];
 
-    if (secrets.ANTHROPIC_API_KEY) {
-      lines.push(`ANTHROPIC_API_KEY=${secrets.ANTHROPIC_API_KEY}`);
-    }
-    if (secrets.OPENROUTER_API_KEY) {
-      lines.push(`OPENROUTER_API_KEY=${secrets.OPENROUTER_API_KEY}`);
-    }
+    // LLM provider keys
+    if (secrets.ANTHROPIC_API_KEY) lines.push(`ANTHROPIC_API_KEY=${secrets.ANTHROPIC_API_KEY}`);
+    if (secrets.OPENROUTER_API_KEY) lines.push(`OPENROUTER_API_KEY=${secrets.OPENROUTER_API_KEY}`);
+
+    // Messaging
     if (config.telegramBotToken) {
       lines.push(`TELEGRAM_BOT_TOKEN=${config.telegramBotToken}`);
-      lines.push("TELEGRAM_ALLOWED_USERS=*");
+      lines.push("GATEWAY_ALLOW_ALL_USERS=true");
     }
-    if (secrets.TAVILY_API_KEY) {
-      lines.push(`TAVILY_API_KEY=${secrets.TAVILY_API_KEY}`);
-    }
-    if (secrets.FIRECRAWL_API_KEY) {
-      lines.push(`FIRECRAWL_API_KEY=${secrets.FIRECRAWL_API_KEY}`);
-    }
+
+    // Tool keys
+    if (secrets.TAVILY_API_KEY) lines.push(`TAVILY_API_KEY=${secrets.TAVILY_API_KEY}`);
+    if (secrets.FIRECRAWL_API_KEY) lines.push(`FIRECRAWL_API_KEY=${secrets.FIRECRAWL_API_KEY}`);
+    if (secrets.FAL_KEY) lines.push(`FAL_KEY=${secrets.FAL_KEY}`);
+    if (secrets.BROWSERBASE_API_KEY) lines.push(`BROWSERBASE_API_KEY=${secrets.BROWSERBASE_API_KEY}`);
 
     return lines.join("\n") + "\n";
   }

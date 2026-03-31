@@ -33,7 +33,7 @@ export async function exec(
     const timeout = opts?.timeoutMs || 30_000;
 
     execFile("ssh", args, { timeout, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error && (error as NodeJS.ErrnoException).killed) {
+      if (error && (error as NodeJS.ErrnoException & { killed?: boolean }).killed) {
         reject(new Error(`SSH command timed out after ${timeout}ms`));
         return;
       }

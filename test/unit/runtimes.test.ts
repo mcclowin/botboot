@@ -69,7 +69,7 @@ describe("runtimes", () => {
       assert.ok(unit.includes("[Unit]"));
       assert.ok(unit.includes("[Service]"));
       assert.ok(unit.includes("openclaw gateway run"));
-      assert.ok(unit.includes("botboot-agent"));
+      assert.ok(unit.includes("BotBoot Agent"));
     });
 
     it("should have correct paths", () => {
@@ -109,7 +109,7 @@ describe("runtimes", () => {
     it("should generate valid systemd unit", () => {
       const unit = runtime.systemdUnit();
       assert.ok(unit.includes("hermes gateway"));
-      assert.ok(unit.includes("botboot-agent"));
+      assert.ok(unit.includes("BotBoot Agent"));
     });
   });
 });

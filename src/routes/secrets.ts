@@ -12,8 +12,9 @@ import { Hono } from "hono";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { db } from "../lib/db.js";
 import { encrypt } from "../lib/crypto.js";
+import type { AuthEnv } from "../lib/types.js";
 
-const secrets = new Hono();
+const secrets = new Hono<AuthEnv>();
 secrets.use("*", apiKeyAuth);
 
 // ── Account-level secrets ──────────────────────────────────────────────

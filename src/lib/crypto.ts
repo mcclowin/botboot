@@ -4,13 +4,14 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypto";
-import { env } from "../env.js";
 
 function getKey(): Buffer {
-  if (!env.SECRETS_ENCRYPTION_KEY) {
+  // Read directly from process.env so tests can set it before import
+  const key = process.env.SECRETS_ENCRYPTION_KEY;
+  if (!key) {
     throw new Error("SECRETS_ENCRYPTION_KEY is required for secret storage");
   }
-  return Buffer.from(env.SECRETS_ENCRYPTION_KEY, "hex");
+  return Buffer.from(key, "hex");
 }
 
 /**
@@ -31,10 +32,11 @@ export function encrypt(plaintext: string): string {
  */
 export function decrypt(blob: string): string {
   const key = getKey();
-  const [ivHex, tagHex, encHex] = blob.split(":");
-  if (!ivHex || !tagHex || !encHex) {
+  const parts = blob.split(":");
+  if (parts.length !== 3 || !parts[0] || !parts[1]) {
     throw new Error("Invalid encrypted blob format");
   }
+  const [ivHex, tagHex, encHex] = parts;
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(tagHex, "hex"));
   return Buffer.concat([

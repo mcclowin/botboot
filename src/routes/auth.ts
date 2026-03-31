@@ -10,8 +10,9 @@ import { Hono } from "hono";
 import { apiKeyAuth } from "../middleware/auth.js";
 import { db } from "../lib/db.js";
 import { generateApiKey } from "../lib/crypto.js";
+import type { AuthEnv } from "../lib/types.js";
 
-const auth = new Hono();
+const auth = new Hono<AuthEnv>();
 
 // Key generation — creates account if needed
 auth.post("/api-keys", async (c) => {
@@ -51,7 +52,7 @@ auth.get("/api-keys", apiKeyAuth, async (c) => {
 // Delete key (requires auth)
 auth.delete("/api-keys/:id", apiKeyAuth, async (c) => {
   const accountId = c.get("accountId");
-  const keyId = c.req.param("id");
+  const keyId = c.req.param("id")!;
   const deleted = await db.deleteApiKey(accountId, keyId);
   if (!deleted) return c.json({ error: "API key not found" }, 404);
   return c.json({ success: true });

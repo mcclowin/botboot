@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-// Set encryption key before importing
+// Set required env vars before importing
+process.env.DATABASE_URL ??= "sqlite://test.db";
 process.env.SECRETS_ENCRYPTION_KEY = "a".repeat(64); // 32 bytes hex
 
 import { encrypt, decrypt, hashApiKey, generateApiKey } from "../../src/lib/crypto.js";

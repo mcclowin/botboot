@@ -21,8 +21,9 @@ import { decrypt } from "../lib/crypto.js";
 import { getProvider } from "../providers/index.js";
 import { getRuntime, listRuntimes } from "../runtimes/index.js";
 import { buildCloudInit } from "../lib/cloud-init.js";
+import type { AuthEnv } from "../lib/types.js";
 
-const agents = new Hono();
+const agents = new Hono<AuthEnv>();
 agents.use("*", apiKeyAuth);
 
 // ── POST /v1/agents ────────────────────────────────────────────────────

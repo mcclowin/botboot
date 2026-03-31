@@ -13,8 +13,8 @@ function optional(key: string, fallback: string): string {
 export const env = {
   PORT: parseInt(optional("PORT", "3001")),
 
-  // Database
-  DATABASE_URL: required("DATABASE_URL"),
+  // Database (optional for unit tests that don't touch DB)
+  DATABASE_URL: optional("DATABASE_URL", ""),
 
   // Infrastructure provider
   INFRA_PROVIDER: optional("INFRA_PROVIDER", "hetzner") as "hetzner" | "docker",

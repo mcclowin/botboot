@@ -72,11 +72,13 @@ export interface UsageLog {
 
 // ── Connection ─────────────────────────────────────────────────────────
 
-const sql = postgres(env.DATABASE_URL, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
+const sql = env.DATABASE_URL
+  ? postgres(env.DATABASE_URL, {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    })
+  : (null as unknown as ReturnType<typeof postgres>);
 
 // ── Database operations ────────────────────────────────────────────────
 

@@ -10,8 +10,9 @@ import { apiKeyAuth } from "../middleware/auth.js";
 import { db } from "../lib/db.js";
 import * as ssh from "../lib/ssh.js";
 import { getRuntime } from "../runtimes/index.js";
+import type { AuthEnv } from "../lib/types.js";
 
-const files = new Hono();
+const files = new Hono<AuthEnv>();
 files.use("*", apiKeyAuth);
 
 files.get("/:id/files/*", async (c) => {
