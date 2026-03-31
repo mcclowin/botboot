@@ -8,15 +8,24 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:unit": "node --import tsx --test test/unit/**/*.test.ts",
+    "test:integration": "node --import tsx --test test/integration/**/*.test.ts",
+    "db:migrate": "psql $DATABASE_URL -f sql/schema.sql",
     "lint": "eslint src/"
   },
-  "keywords": ["ai", "agent", "deployment", "openclaw", "hermes", "infrastructure"],
+  "keywords": ["ai", "agent", "deployment", "openclaw", "hermes", "infrastructure", "self-hosted"],
   "author": "Brain&Bot <hello@brainandbot.gg>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mcclowin/botboot"
+  },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
+    "dotenv": "^16.4.0",
     "hono": "^4.6.0",
-    "dotenv": "^16.4.0"
+    "postgres": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

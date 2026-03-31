@@ -13,25 +13,23 @@ import { generateApiKey } from "../lib/crypto.js";
 
 const auth = new Hono();
 
-// Key generation doesn't require auth (bootstrap endpoint)
-// In production, protect this with admin key or rate limiting
+// Key generation — creates account if needed
 auth.post("/api-keys", async (c) => {
   const body = await c.req.json<{ name?: string; email?: string }>();
 
-  if (!body.email && !body.name) {
-    return c.json({ error: "email or name required" }, 400);
+  if (!body.email) {
+    return c.json({ error: "email is required" }, 400);
   }
 
+  const account = await db.getOrCreateAccount(body.email);
   const { key, prefix, hash } = generateApiKey();
-
-  // TODO: Create account if needed, then create API key
-  // const account = await db.getOrCreateAccount(body.email);
-  // await db.createApiKey(account.id, body.name || "default", hash, prefix);
+  await db.createApiKey(account.id, body.name || "default", hash, prefix);
 
   return c.json({
-    key,       // Only shown once
+    key,       // Only shown once — save it!
     prefix,    // For identification
     name: body.name || "default",
+    account_id: account.id,
     message: "Save this key — it won't be shown again.",
   });
 });
