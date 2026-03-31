@@ -15,6 +15,25 @@
   <a href="#supported-providers">Providers</a>
 </p>
 
+<p align="center">
+  <strong>Supported Runtimes</strong>
+</p>
+
+<p align="center">
+  <a href="https://openclaw.ai"><img src="https://img.shields.io/badge/OpenClaw-✅_Supported-4f46e5?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQyIDAtOC0zLjU4LTgtOHMzLjU4LTggOC04IDggMy41OCA4IDgtMy41OCA4LTggOHoiLz48L3N2Zz4=" alt="OpenClaw" /></a>
+  <a href="https://hermes-agent.nousresearch.com"><img src="https://img.shields.io/badge/Hermes_Agent-🚧_Coming_Soon-6366f1?style=for-the-badge" alt="Hermes Agent" /></a>
+</p>
+
+<p align="center">
+  <strong>Supported Infrastructure</strong>
+</p>
+
+<p align="center">
+  <a href="https://hetzner.cloud"><img src="https://img.shields.io/badge/Hetzner_Cloud-✅_Supported-d50c2d?style=for-the-badge&logo=hetzner&logoColor=white" alt="Hetzner" /></a>
+  <a href="https://www.docker.com"><img src="https://img.shields.io/badge/Docker-🚧_Planned-2496ed?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" /></a>
+  <a href="https://phala.network"><img src="https://img.shields.io/badge/Phala_TEE-🚧_Planned-cdfa50?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzMzMyI+PHBhdGggZD0iTTEyIDFMMyA1djZjMCA1LjU1IDMuODQgMTAuNzQgOSAxMiA1LjE2LTEuMjYgOS02LjQ1IDktMTJWNWwtOS00eiIvPjwvc3ZnPg==" alt="Phala TEE" /></a>
+</p>
+
 ---
 
 BotBoot is an open-source platform for deploying and managing isolated AI agent instances. Each agent gets its own VM with full isolation — persistent memory, messaging channels, and workspace files. Framework-agnostic: supports [OpenClaw](https://openclaw.ai), [Hermes Agent](https://hermes-agent.nousresearch.com), and more.
@@ -34,13 +53,15 @@ curl -X POST https://api.botboot.dev/v1/agents \
 
 ## The Problem
 
-Every AI agent tutorial ends the same way: **a working prototype running on localhost.**
+You're building a product that gives each user their own AI agent. Maybe it's a marketing concierge, a support bot, a research assistant. You've built one agent and it works. Now you need to launch **hundreds or thousands** of them.
 
-Then what? You need to give each of your users their own persistent agent. You look at your options:
+You quickly discover:
 
-- **Agent frameworks** (LangChain, CrewAI) help you *build* agents but don't *host* them
-- **Cloud platforms** (Railway, Modal, Fly.io) host *apps* but don't understand agents — no concept of identity files, persistent memory, or messaging channels
-- **Cloud AI services** (AWS Bedrock, Vertex AI) are enterprise-only, framework-locked, and don't give per-user isolation
+- **There's no API to spin up isolated agents at scale.** You're writing custom infra code for every deployment.
+- **Agent frameworks** (LangChain, CrewAI) help you *build* agents but don't *host* them — you're on your own for provisioning, secrets, lifecycle management.
+- **Cloud platforms** (Railway, Modal, Fly.io) host *apps* but don't understand agents — no concept of identity files, persistent memory, messaging channels, or per-agent LLM key management.
+- **Cloud AI services** (AWS Bedrock, Vertex AI) are enterprise-only, framework-locked, and don't give per-user isolation.
+- **You can't track LLM usage per agent**, rotate API keys across a fleet, or update agent identities without SSHing into every box.
 
 There's a gap in the stack:
 
@@ -49,8 +70,8 @@ There's a gap in the stack:
                         ↑
                         │
     CrewAI / LangGraph  │     ??? (THE GAP)
-    (build agents,      │     (deploy isolated agents
-     no hosting)        │      for your users, via API)
+    (build agents,      │     (deploy + manage 100s of
+     no hosting)        │      isolated agents via API)
                         │
    ─────────────────────┼────────────────────────→ Per-User
                         │                          Isolation
@@ -61,18 +82,18 @@ There's a gap in the stack:
                         ↓
 ```
 
-**BotBoot fills that gap.** One API to deploy isolated, persistent AI agents — each with their own VM, identity, memory, and messaging channels. Framework-agnostic. Self-hostable. Open source.
+**BotBoot fills that gap.** One API to deploy, manage, and scale isolated AI agents — each with their own VM, identity, secrets, and messaging channels. Framework-agnostic. Self-hostable. Open source.
 
 ## Why BotBoot?
 
 | Problem | BotBoot Solution |
 |---------|-----------------|
+| No API to deploy agents at scale | `POST /v1/agents` — one call, one agent |
+| Can't manage secrets across a fleet | 3-tier key management (platform → account → agent) |
 | Agent frameworks don't host agents | We handle infra — you define the agent |
-| Cloud platforms don't understand agents | First-class agent lifecycle, files, channels |
-| No per-user agent isolation | Every agent gets its own VM |
-| Locked to one framework | OpenClaw, Hermes, more coming |
-| Complex setup | One API call to deploy |
-| Vendor lock-in | Self-host on your own Hetzner account |
+| Locked to one framework | OpenClaw, Hermes, bring your own |
+| No per-agent usage tracking | Per-agent runtime info, secrets, and file access |
+| Vendor lock-in | Self-host with `docker compose up` |
 
 ## Features
 
