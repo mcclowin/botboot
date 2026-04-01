@@ -39,7 +39,8 @@ const TEST_MODEL = process.env.TEST_MODEL || "openai-codex/gpt-5.4";
 const TEST_KEEP_ALIVE_MIN = parseInt(process.env.TEST_KEEP_ALIVE_MIN || "0", 10);
 const TEST_KEEP_ALIVE = process.env.TEST_KEEP_ALIVE === "1" || TEST_KEEP_ALIVE_MIN > 0;
 const TEST_OPENAI_AUTH_JSON = process.env.TEST_OPENAI_AUTH_JSON || "";
-const TEST_TELEGRAM_BOT_TOKEN = process.env.TEST_TELEGRAM_BOT_TOKEN || "";
+const TEST_TELEGRAM_BOT_TOKEN_OPENCLAW = process.env.TEST_TELEGRAM_BOT_TOKEN_OPENCLAW || process.env.TEST_TELEGRAM_BOT_TOKEN || "";
+const TEST_TELEGRAM_BOT_TOKEN_HERMES = process.env.TEST_TELEGRAM_BOT_TOKEN_HERMES || process.env.TEST_TELEGRAM_BOT_TOKEN || "";
 
 describe("E2E: Spawn Agent on Hetzner", { skip: SKIP_REASON ?? false }, () => {
   const provider = new HetznerProvider();
@@ -80,7 +81,7 @@ describe("E2E: Spawn Agent on Hetzner", { skip: SKIP_REASON ?? false }, () => {
         config: {
           name: "e2e-test-agent",
           model: TEST_MODEL,
-          telegramBotToken: TEST_TELEGRAM_BOT_TOKEN || undefined,
+          telegramBotToken: TEST_TELEGRAM_BOT_TOKEN_OPENCLAW || undefined,
         },
         secrets: {
           ...(TEST_OPENAI_AUTH_JSON ? { OPENAI_AUTH_JSON: TEST_OPENAI_AUTH_JSON } : {}),
@@ -231,6 +232,7 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
       config: {
         name: "e2e-hermes-test",
         model: TEST_MODEL,
+        telegramBotToken: TEST_TELEGRAM_BOT_TOKEN_HERMES || undefined,
       },
       secrets: {
         ...(TEST_OPENAI_AUTH_JSON ? { OPENAI_AUTH_JSON: TEST_OPENAI_AUTH_JSON } : {}),

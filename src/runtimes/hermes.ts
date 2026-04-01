@@ -25,11 +25,7 @@ export class HermesRuntime implements RuntimeAdapter {
   installCommands(): string[] {
     return [
       "# Install system deps",
-      "apt-get install -y python3 python3-pip git ffmpeg ripgrep",
-      "",
-      "# Install uv (fast Python package manager)",
-      "curl -LsSf https://astral.sh/uv/install.sh | sh",
-      'export PATH="/root/.local/bin:$PATH"',
+      "apt-get install -y python3 python3-pip python3-venv git ffmpeg ripgrep",
       "",
       "# Install Node.js 22 (needed for browser tools + WhatsApp bridge)",
       "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -",
@@ -39,10 +35,10 @@ export class HermesRuntime implements RuntimeAdapter {
       "git clone --recurse-submodules https://github.com/NousResearch/hermes-agent.git /opt/hermes-agent",
       "cd /opt/hermes-agent",
       "",
-      "# Create venv with Python 3.11 and install all extras",
-      "uv venv venv --python 3.11",
-      'export VIRTUAL_ENV="/opt/hermes-agent/venv"',
-      'uv pip install -e ".[all]"',
+      "# Create service-user-safe venv with system Python (avoid /root/.local uv interpreter paths)",
+      "python3 -m venv /opt/hermes-agent/venv",
+      "/opt/hermes-agent/venv/bin/pip install --upgrade pip setuptools wheel",
+      '/opt/hermes-agent/venv/bin/pip install -e ".[all]"',
       "",
       "# Install Node deps (browser automation + WhatsApp)",
       "npm install 2>/dev/null || true",
@@ -50,9 +46,10 @@ export class HermesRuntime implements RuntimeAdapter {
       "# Make hermes accessible to all users",
       "chmod -R a+rX /opt/hermes-agent",
       "chmod a+rx /opt/hermes-agent/venv/bin/hermes",
+      "chmod a+rx /opt/hermes-agent/venv/bin/python3",
       "mkdir -p /usr/local/bin",
       "ln -sf /opt/hermes-agent/venv/bin/hermes /usr/local/bin/hermes",
-      "hermes version || echo 'hermes installed (version check may need config)'",
+      "/usr/local/bin/hermes version || echo 'hermes installed (version check may need config)'",
     ];
   }
 
@@ -181,7 +178,7 @@ WantedBy=multi-user.target`;
     // Determine provider from model string
     let provider = "openrouter";
     if (model.startsWith("anthropic/") || model.startsWith("claude")) provider = "anthropic";
-    else if (model.startsWith("openai/") || model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")) provider = "openai";
+    else if (model.startsWith("openai/") || model.startsWith("openai-codex/") || model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")) provider = "openai";
     else if (model.startsWith("google/") || model.startsWith("gemini")) provider = "google";
 
     return `# BotBoot — Hermes Agent Config
