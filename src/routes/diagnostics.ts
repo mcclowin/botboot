@@ -53,20 +53,25 @@ diagnostics.get("/:id/health", async (c) => {
       version = ver.stdout.trim() || "unknown";
       recentErrors = journal.stdout
         .split("\n")
-        .filter((line) => /error|failed|exception|denied/i.test(line))
-        .slice(-10);
+        .filter((line) => /error|failed|exception|denied|telegram|auth/i.test(line))
+        .slice(-20);
 
       if (agent.runtime === "openclaw") {
-        const [cfg, auth] = await Promise.all([
+        const [cfg, auth, secretsEnv, gatewayStatus] = await Promise.all([
           ssh.exec(ip, "cat /home/agent/.openclaw/openclaw.json 2>/dev/null || echo '{}'", { user: "root" }),
           ssh.exec(ip, "cat /home/agent/.openclaw/agents/main/agent/auth-profiles.json 2>/dev/null || echo '{}'", { user: "root" }),
+          ssh.exec(ip, "cat /etc/botboot/secrets.env 2>/dev/null || true", { user: "root" }),
+          ssh.exec(ip, "openclaw gateway status 2>/dev/null || true", { user: "root", timeoutMs: 20_000 }),
         ]);
         try { openclawConfigPreview = JSON.parse(cfg.stdout); } catch {}
         try { authProfilesPreview = JSON.parse(auth.stdout); } catch {}
         runtimeChecks = {
           telegramConfigured: Boolean((openclawConfigPreview as any)?.channels?.telegram?.enabled),
+          telegramPluginEnabled: Boolean((openclawConfigPreview as any)?.plugins?.entries?.telegram?.enabled),
+          telegramTokenPresent: /TELEGRAM_BOT_TOKEN=|botToken/i.test(secretsEnv.stdout + '\n' + cfg.stdout),
           authProfilesPresent: Boolean((authProfilesPreview as any)?.profiles),
           providerKeys: Object.keys((authProfilesPreview as any)?.profiles || {}),
+          gatewayStatusText: gatewayStatus.stdout.trim(),
         };
       } else if (agent.runtime === "hermes") {
         const [cfg, envFile] = await Promise.all([

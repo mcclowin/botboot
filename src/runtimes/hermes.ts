@@ -177,9 +177,10 @@ WantedBy=multi-user.target`;
 
     // Determine provider from model string
     let provider = "openrouter";
-    if (model.startsWith("anthropic/") || model.startsWith("claude")) provider = "anthropic";
-    else if (model.startsWith("openai/") || model.startsWith("openai-codex/") || model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")) provider = "openai";
-    else if (model.startsWith("google/") || model.startsWith("gemini")) provider = "google";
+    if (model.startsWith("anthropic/") || model.startsWith("claude")) provider = "openrouter";
+    else if (model.startsWith("openai-codex/") || model.startsWith("gpt-5") || model.startsWith("gpt-4.1") || model.startsWith("o1") || model.startsWith("o3")) provider = "codex";
+    else if (model.startsWith("openai/") || model.startsWith("gpt")) provider = "main";
+    else if (model.startsWith("google/") || model.startsWith("gemini")) provider = "openrouter";
 
     return `# BotBoot — Hermes Agent Config
 # Generated at provisioning time. Edit via BotBoot API or SSH.
@@ -220,6 +221,11 @@ gateway:
     // LLM provider keys
     if (secrets.ANTHROPIC_API_KEY) lines.push(`ANTHROPIC_API_KEY=${secrets.ANTHROPIC_API_KEY}`);
     if (secrets.OPENROUTER_API_KEY) lines.push(`OPENROUTER_API_KEY=${secrets.OPENROUTER_API_KEY}`);
+
+    // Codex / ChatGPT OAuth-style auth. Hermes docs use provider "codex" for this path.
+    if (secrets.OPENAI_AUTH_JSON) {
+      lines.push(`OPENAI_AUTH_JSON=${secrets.OPENAI_AUTH_JSON}`);
+    }
 
     // Messaging
     if (config.telegramBotToken) {
