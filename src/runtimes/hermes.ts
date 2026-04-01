@@ -220,7 +220,7 @@ WantedBy=multi-user.target`;
   private buildConfigYaml(config: AgentConfig): string {
     const model = config.model || "anthropic/claude-sonnet-4";
     const isCodexStyle = model.startsWith("openai-codex/") || model.startsWith("gpt-5") || model.startsWith("gpt-4.1") || model.startsWith("o1") || model.startsWith("o3");
-    const defaultModel = model.startsWith("openai-codex/") ? model.replace(/^openai-codex\//, "") : model;
+    const defaultModel = model.startsWith("openai-codex/") ? model.replace("openai-codex/", "") : model;
 
     // Match the working manual Hermes setup exactly for Codex/ChatGPT auth.
     const modelBlock = isCodexStyle
