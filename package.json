@@ -14,6 +14,7 @@
     "test:e2e": "node --import tsx --import ./test/setup.ts --test test/e2e/**/*.test.ts",
     "test:e2e:openclaw": "node --import tsx --import ./test/setup.ts --test test/e2e/openclaw.test.ts",
     "test:e2e:hermes": "node --import tsx --import ./test/setup.ts --test test/e2e/hermes.test.ts",
+    "test:e2e:api": "node --import tsx --import ./test/setup.ts --test test/e2e/api-flow.test.ts",
     "db:migrate": "psql $DATABASE_URL -f sql/schema.sql",
     "hermes:bootstrap:manual": "node --import tsx ./scripts/hermes-bootstrap-manual.js",
     "lint": "eslint src/"
