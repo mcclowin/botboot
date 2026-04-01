@@ -158,7 +158,7 @@ WantedBy=multi-user.target`;
         profiles: {
           "anthropic:default": { provider: "anthropic", mode: "token" },
           "openrouter:default": { provider: "openrouter", mode: "token" },
-          "openai:default": { provider: "openai", mode: "auth-json" },
+          "openai:default": { provider: "openai", mode: "oauth" },
         },
       },
       agents: {
