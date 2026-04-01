@@ -147,27 +147,50 @@ export const db = {
   // ── Agents ─────────────────────────────────────────────────────────
 
   async createAgent(agent: Omit<Agent, "id" | "created_at" | "updated_at">): Promise<Agent> {
-    const rows = await sql<Agent[]>`
-      INSERT INTO agents (account_id, name, runtime, provider, server_id, ip, state, config, exposed_secrets)
-      VALUES (
-        ${agent.account_id},
-        ${agent.name},
-        ${agent.runtime},
-        ${agent.provider},
-        ${agent.server_id},
-        ${agent.ip},
-        ${agent.state},
-        ${JSON.stringify(agent.config)},
-        ${JSON.stringify(agent.exposed_secrets || [])}
-      )
-      RETURNING *
+    const hasExposedSecrets = await sql<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'agents' AND column_name = 'exposed_secrets'
+      ) AS exists
     `;
+
+    const rows = hasExposedSecrets[0]?.exists
+      ? await sql<Agent[]>`
+          INSERT INTO agents (account_id, name, runtime, provider, server_id, ip, state, config, exposed_secrets)
+          VALUES (
+            ${agent.account_id},
+            ${agent.name},
+            ${agent.runtime},
+            ${agent.provider},
+            ${agent.server_id ?? null},
+            ${agent.ip ?? null},
+            ${agent.state},
+            ${JSON.stringify(agent.config || {})},
+            ${JSON.stringify(agent.exposed_secrets || [])}
+          )
+          RETURNING *
+        `
+      : await sql<Agent[]>`
+          INSERT INTO agents (account_id, name, runtime, provider, server_id, ip, state, config)
+          VALUES (
+            ${agent.account_id},
+            ${agent.name},
+            ${agent.runtime},
+            ${agent.provider},
+            ${agent.server_id ?? null},
+            ${agent.ip ?? null},
+            ${agent.state},
+            ${JSON.stringify(agent.config || {})}
+          )
+          RETURNING *, '[]'::jsonb AS exposed_secrets
+        `;
     return rows[0];
   },
 
   async listAgents(accountId: string): Promise<Agent[]> {
     return sql<Agent[]>`
-      SELECT * FROM agents
+      SELECT *, COALESCE(exposed_secrets, '[]'::jsonb) AS exposed_secrets FROM agents
       WHERE account_id = ${accountId} AND state != 'deleted'
       ORDER BY created_at DESC
     `;
@@ -175,20 +198,41 @@ export const db = {
 
   async getAgent(accountId: string, agentId: string): Promise<Agent | null> {
     const rows = await sql<Agent[]>`
-      SELECT * FROM agents
+      SELECT *, COALESCE(exposed_secrets, '[]'::jsonb) AS exposed_secrets FROM agents
       WHERE id = ${agentId} AND account_id = ${accountId}
     `;
     return rows[0] || null;
   },
 
   async updateAgent(agentId: string, updates: Partial<Agent>): Promise<void> {
+    const hasExposedSecrets = await sql<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'agents' AND column_name = 'exposed_secrets'
+      ) AS exists
+    `;
+
+    if (hasExposedSecrets[0]?.exists) {
+      await sql`
+        UPDATE agents SET
+          state = COALESCE(${updates.state ?? null}, state),
+          ip = COALESCE(${updates.ip ?? null}, ip),
+          server_id = COALESCE(${updates.server_id ?? null}, server_id),
+          config = COALESCE(${updates.config ? JSON.stringify(updates.config) : null}::jsonb, config),
+          exposed_secrets = COALESCE(${updates.exposed_secrets !== undefined ? JSON.stringify(updates.exposed_secrets) : null}::jsonb, exposed_secrets),
+          updated_at = now()
+        WHERE id = ${agentId}
+      `;
+      return;
+    }
+
     await sql`
       UPDATE agents SET
         state = COALESCE(${updates.state ?? null}, state),
         ip = COALESCE(${updates.ip ?? null}, ip),
         server_id = COALESCE(${updates.server_id ?? null}, server_id),
         config = COALESCE(${updates.config ? JSON.stringify(updates.config) : null}::jsonb, config),
-        exposed_secrets = COALESCE(${updates.exposed_secrets ? JSON.stringify(updates.exposed_secrets) : null}::jsonb, exposed_secrets),
         updated_at = now()
       WHERE id = ${agentId}
     `;
@@ -265,7 +309,7 @@ export const db = {
         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
         reasoning_tokens, total_tokens, estimated_cost_usd, source, last_polled_at
       ) VALUES (
-        ${log.agent_id}, ${log.usage_date}, ${log.runtime}, ${log.provider}, ${log.model},
+        ${log.agent_id}, ${log.usage_date}, ${log.runtime}, ${log.provider ?? null}, ${log.model},
         ${log.input_tokens}, ${log.output_tokens}, ${log.cache_read_tokens}, ${log.cache_write_tokens},
         ${log.reasoning_tokens}, ${log.total_tokens}, ${log.estimated_cost_usd}, ${log.source || 'poll'}, now()
       )
