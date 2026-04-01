@@ -5,6 +5,7 @@
  * manages via systemd service.
  */
 
+import { randomUUID } from "node:crypto";
 import type { RuntimeAdapter, AgentConfig } from "./types.js";
 
 export class OpenClawRuntime implements RuntimeAdapter {
@@ -172,7 +173,7 @@ WantedBy=multi-user.target`;
         bind: "lan",
         auth: {
           mode: "token",
-          token: crypto.randomUUID().replace(/-/g, ""),
+          token: randomUUID().replace(/-/g, ""),
         },
       },
       plugins: {
