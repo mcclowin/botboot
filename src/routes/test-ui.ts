@@ -115,7 +115,11 @@ ui.get("/", (c) => {
     <textarea id="user">Name: Mohammed</textarea>
     <div style="margin-top:12px;">
       <button onclick="createAgent()">Create agent</button>
+      <button class="secondary" onclick="agentHealth()">Check agent health</button>
+      <button class="secondary" onclick="agentLogs()">Fetch agent logs</button>
     </div>
+    <label>Last created / target agent id</label>
+    <input id="agentId" placeholder="agent uuid" />
   </div>
 
   <div class="card">
@@ -177,7 +181,20 @@ async function createAgent() {
   };
   const res = await fetch(document.getElementById('baseUrl').value + '/v1/agents', { method:'POST', headers: headers(), body: JSON.stringify(payload) });
   const data = await res.json();
+  if (data && data.id) document.getElementById('agentId').value = data.id;
   log('Create agent → ' + res.status, data);
+}
+async function agentHealth() {
+  const id = document.getElementById('agentId').value.trim();
+  const res = await fetch(document.getElementById('baseUrl').value + '/v1/agents/' + id + '/health', { headers: headers() });
+  const data = await res.json();
+  log('Agent health → ' + res.status, data);
+}
+async function agentLogs() {
+  const id = document.getElementById('agentId').value.trim();
+  const res = await fetch(document.getElementById('baseUrl').value + '/v1/agents/' + id + '/logs', { headers: headers() });
+  const data = await res.json();
+  log('Agent logs → ' + res.status, data);
 }
 </script>
 </body>

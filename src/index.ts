@@ -15,6 +15,7 @@ import secretRoutes from "./routes/secrets.js";
 import fileRoutes from "./routes/files.js";
 import authRoutes from "./routes/auth.js";
 import usageRoutes from "./routes/usage.js";
+import diagnosticsRoutes from "./routes/diagnostics.js";
 import testUiRoutes from "./routes/test-ui.js";
 
 const app = new Hono();
@@ -44,6 +45,7 @@ app.route("/v1/secrets", secretRoutes);
 app.route("/v1/auth", authRoutes);
 app.route("/v1/usage", usageRoutes);
 app.route("/v1/agents", usageRoutes);   // /v1/agents/:id/usage
+app.route("/v1/agents", diagnosticsRoutes); // /v1/agents/:id/health, /v1/agents/:id/logs
 
 // 404
 app.notFound((c) => c.json({ error: "Not found" }, 404));
