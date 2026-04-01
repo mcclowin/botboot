@@ -42,8 +42,7 @@ CREATE TABLE IF NOT EXISTS account_secrets (
   encrypted       TEXT NOT NULL,             -- AES-256-GCM encrypted value
   agent_id        UUID REFERENCES agents(id) ON DELETE CASCADE,  -- NULL = account-level
   created_at      TIMESTAMPTZ DEFAULT now(),
-  updated_at      TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(account_id, key_name, COALESCE(agent_id, '00000000-0000-0000-0000-000000000000'))
+  updated_at      TIMESTAMPTZ DEFAULT now()
 );
 
 -- Indexes
@@ -53,6 +52,8 @@ CREATE INDEX IF NOT EXISTS idx_agents_account ON agents(account_id);
 CREATE INDEX IF NOT EXISTS idx_agents_state ON agents(state);
 CREATE INDEX IF NOT EXISTS idx_secrets_account ON account_secrets(account_id);
 CREATE INDEX IF NOT EXISTS idx_secrets_agent ON account_secrets(agent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_secrets_account_key_agent
+  ON account_secrets (account_id, key_name, COALESCE(agent_id, '00000000-0000-0000-0000-000000000000'::uuid));
 
 -- Daily usage snapshots per agent/model
 CREATE TABLE IF NOT EXISTS usage_logs (
