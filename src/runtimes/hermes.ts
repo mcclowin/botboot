@@ -178,7 +178,7 @@ WantedBy=multi-user.target`;
     // Determine provider from model string
     let provider = "openrouter";
     if (model.startsWith("anthropic/") || model.startsWith("claude")) provider = "openrouter";
-    else if (model.startsWith("openai-codex/") || model.startsWith("gpt-5") || model.startsWith("gpt-4.1") || model.startsWith("o1") || model.startsWith("o3")) provider = "codex";
+    else if (model.startsWith("openai-codex/") || model.startsWith("gpt-5") || model.startsWith("gpt-4.1") || model.startsWith("o1") || model.startsWith("o3")) provider = "main";
     else if (model.startsWith("openai/") || model.startsWith("gpt")) provider = "main";
     else if (model.startsWith("google/") || model.startsWith("gemini")) provider = "openrouter";
 
