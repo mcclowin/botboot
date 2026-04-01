@@ -15,6 +15,7 @@ import secretRoutes from "./routes/secrets.js";
 import fileRoutes from "./routes/files.js";
 import authRoutes from "./routes/auth.js";
 import usageRoutes from "./routes/usage.js";
+import testUiRoutes from "./routes/test-ui.js";
 
 const app = new Hono();
 
@@ -32,6 +33,9 @@ app.get("/health", (c) => c.json({
   service: "botboot",
   version: "0.1.0",
 }));
+
+// Internal test UI
+app.route("/", testUiRoutes);
 
 // Routes
 app.route("/v1/agents", agentRoutes);

@@ -27,6 +27,7 @@ export interface Agent {
   ip: string | null;
   state: "provisioning" | "running" | "stopped" | "error" | "deleted";
   config: Record<string, unknown>;
+  exposed_secrets: string[];
   created_at: string;
   updated_at: string;
 }
@@ -147,7 +148,7 @@ export const db = {
 
   async createAgent(agent: Omit<Agent, "id" | "created_at" | "updated_at">): Promise<Agent> {
     const rows = await sql<Agent[]>`
-      INSERT INTO agents (account_id, name, runtime, provider, server_id, ip, state, config)
+      INSERT INTO agents (account_id, name, runtime, provider, server_id, ip, state, config, exposed_secrets)
       VALUES (
         ${agent.account_id},
         ${agent.name},
@@ -156,7 +157,8 @@ export const db = {
         ${agent.server_id},
         ${agent.ip},
         ${agent.state},
-        ${JSON.stringify(agent.config)}
+        ${JSON.stringify(agent.config)},
+        ${JSON.stringify(agent.exposed_secrets || [])}
       )
       RETURNING *
     `;
@@ -186,6 +188,7 @@ export const db = {
         ip = COALESCE(${updates.ip ?? null}, ip),
         server_id = COALESCE(${updates.server_id ?? null}, server_id),
         config = COALESCE(${updates.config ? JSON.stringify(updates.config) : null}::jsonb, config),
+        exposed_secrets = COALESCE(${updates.exposed_secrets ? JSON.stringify(updates.exposed_secrets) : null}::jsonb, exposed_secrets),
         updated_at = now()
       WHERE id = ${agentId}
     `;
@@ -203,17 +206,21 @@ export const db = {
   async setSecret(accountId: string, keyName: string, encrypted: string, agentId?: string): Promise<void> {
     if (agentId) {
       await sql`
+        DELETE FROM account_secrets
+        WHERE account_id = ${accountId} AND key_name = ${keyName} AND agent_id = ${agentId}
+      `;
+      await sql`
         INSERT INTO account_secrets (account_id, key_name, encrypted, agent_id)
         VALUES (${accountId}, ${keyName}, ${encrypted}, ${agentId})
-        ON CONFLICT (account_id, key_name, COALESCE(agent_id, '00000000-0000-0000-0000-000000000000'))
-        DO UPDATE SET encrypted = ${encrypted}, updated_at = now()
       `;
     } else {
       await sql`
+        DELETE FROM account_secrets
+        WHERE account_id = ${accountId} AND key_name = ${keyName} AND agent_id IS NULL
+      `;
+      await sql`
         INSERT INTO account_secrets (account_id, key_name, encrypted)
         VALUES (${accountId}, ${keyName}, ${encrypted})
-        ON CONFLICT (account_id, key_name, COALESCE(agent_id, '00000000-0000-0000-0000-000000000000'))
-        DO UPDATE SET encrypted = ${encrypted}, updated_at = now()
       `;
     }
   },

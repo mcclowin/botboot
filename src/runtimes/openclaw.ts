@@ -66,12 +66,17 @@ export class OpenClawRuntime implements RuntimeAdapter {
             token: secrets.OPENROUTER_API_KEY,
           },
         } : {}),
+        ...(secrets.OPENAI_AUTH_JSON ? {
+          "openai:default": JSON.parse(secrets.OPENAI_AUTH_JSON),
+        } : {}),
       },
       lastGood: secrets.ANTHROPIC_API_KEY
         ? { anthropic: "anthropic:default" }
         : secrets.OPENROUTER_API_KEY
           ? { openrouter: "openrouter:default" }
-          : {},
+          : secrets.OPENAI_AUTH_JSON
+            ? { openai: "openai:default" }
+            : {},
     });
     const authB64 = Buffer.from(authProfiles).toString("base64");
 
@@ -151,6 +156,8 @@ WantedBy=multi-user.target`;
       auth: {
         profiles: {
           "anthropic:default": { provider: "anthropic", mode: "token" },
+          "openrouter:default": { provider: "openrouter", mode: "token" },
+          "openai:default": { provider: "openai", mode: "auth-json" },
         },
       },
       agents: {

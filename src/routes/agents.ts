@@ -36,6 +36,7 @@ agents.post("/", async (c) => {
     provider?: string;
     model?: string;
     telegramBotToken?: string;
+    exposedSecrets?: string[];
     files?: Record<string, string>;
   }>();
 
@@ -47,8 +48,12 @@ agents.post("/", async (c) => {
   const runtime = getRuntime(runtimeName);
   const provider = getProvider(body.provider);
 
-  // Resolve secrets (3-tier cascade)
-  const secrets = await resolveSecrets(accountId, undefined);
+  const exposedSecrets = Array.isArray(body.exposedSecrets)
+    ? body.exposedSecrets.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : [];
+
+  // Resolve only explicitly exposed secrets (3-tier cascade)
+  const secrets = await resolveSecrets(accountId, undefined, exposedSecrets);
 
   // Validate at least one LLM key exists
   if (!secrets.ANTHROPIC_API_KEY && !secrets.OPENROUTER_API_KEY) {
@@ -97,6 +102,7 @@ agents.post("/", async (c) => {
         telegramBotToken: body.telegramBotToken,
         files: Object.keys(body.files || {}),
       },
+      exposed_secrets: exposedSecrets,
     });
 
     return c.json({
@@ -106,6 +112,7 @@ agents.post("/", async (c) => {
       provider: provider.name,
       state: "provisioning",
       ip: machine.ip,
+      exposedSecrets,
     }, 201);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Agent creation failed";
@@ -292,8 +299,9 @@ agents.get("/:id/boot-status", async (c) => {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-async function resolveSecrets(accountId: string, agentId?: string): Promise<Record<string, string>> {
+async function resolveSecrets(accountId: string, agentId?: string, exposedKeys?: string[]): Promise<Record<string, string>> {
   const { env: e } = await import("../env.js");
+  const allow = new Set((exposedKeys || []).map((k) => k.trim()).filter(Boolean));
 
   // Tier 1: Platform defaults
   const secrets: Record<string, string> = {};
@@ -316,7 +324,22 @@ async function resolveSecrets(accountId: string, agentId?: string): Promise<Reco
     }
   }
 
-  return secrets;
+  if (allow.size === 0) {
+    return {
+      ...(secrets.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: secrets.ANTHROPIC_API_KEY } : {}),
+      ...(secrets.OPENROUTER_API_KEY ? { OPENROUTER_API_KEY: secrets.OPENROUTER_API_KEY } : {}),
+    };
+  }
+
+  const filtered: Record<string, string> = {};
+  for (const key of allow) {
+    if (secrets[key]) filtered[key] = secrets[key];
+  }
+
+  if (!filtered.ANTHROPIC_API_KEY && secrets.ANTHROPIC_API_KEY) filtered.ANTHROPIC_API_KEY = secrets.ANTHROPIC_API_KEY;
+  if (!filtered.OPENROUTER_API_KEY && secrets.OPENROUTER_API_KEY) filtered.OPENROUTER_API_KEY = secrets.OPENROUTER_API_KEY;
+
+  return filtered;
 }
 
 export default agents;

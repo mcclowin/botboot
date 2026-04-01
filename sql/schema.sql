@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS agents (
   ip              TEXT,                               -- Public IPv4
   state           TEXT DEFAULT 'provisioning',        -- provisioning | running | stopped | error | deleted
   config          JSONB DEFAULT '{}',                 -- Non-secret config (model, channels, etc)
+  exposed_secrets JSONB DEFAULT '[]',                 -- Explicit allowlist of secret key names exposed to this agent
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now()
 );
@@ -50,6 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_account ON api_keys(account_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_agents_account ON agents(account_id);
 CREATE INDEX IF NOT EXISTS idx_agents_state ON agents(state);
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS exposed_secrets JSONB DEFAULT '[]';
 CREATE INDEX IF NOT EXISTS idx_secrets_account ON account_secrets(account_id);
 CREATE INDEX IF NOT EXISTS idx_secrets_agent ON account_secrets(agent_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_account_secrets_account_key_agent
