@@ -28,7 +28,7 @@ ui.get("/", (c) => {
 </head>
 <body>
   <h1>BotBoot test wizard</h1>
-  <p class="muted">Internal test page for account secrets, exposed-secret selection, and agent launch.</p>
+  <p class="muted">Internal test page for app-level account secrets, end-user secrets, exposed-secret selection, and agent launch.</p>
 
   <div class="card">
     <h2>1. BotBoot API</h2>
@@ -39,7 +39,8 @@ ui.get("/", (c) => {
   </div>
 
   <div class="card">
-    <h2>2. Account secrets</h2>
+    <h2>2. Account / app secrets</h2>
+    <p class="muted">These are developer-owned secrets BotBoot can inject into agents.</p>
     <div class="row">
       <div>
         <label>ANTHROPIC_API_KEY</label>
@@ -54,20 +55,34 @@ ui.get("/", (c) => {
         <input id="openrouter" placeholder="sk-or-..." />
       </div>
       <div>
-        <label>TELEGRAM_BOT_TOKEN</label>
-        <input id="telegram" placeholder="123456:ABC..." />
+        <label>FIRECRAWL_API_KEY</label>
+        <input id="firecrawl" placeholder="fc-..." />
       </div>
     </div>
     <label>OPENAI_AUTH_JSON / Codex auth JSON</label>
     <textarea id="openaiAuth" placeholder='{"type":"token","provider":"openai","token":"..."}'></textarea>
     <div style="margin-top:12px;">
-      <button onclick="saveSecrets()">Save secrets</button>
+      <button onclick="saveAccountSecrets()">Save account secrets</button>
       <button class="secondary" onclick="listSecrets()">List secret names</button>
     </div>
   </div>
 
   <div class="card">
-    <h2>3. Create agent</h2>
+    <h2>3. End-user secrets</h2>
+    <p class="muted">These belong to the end user using the deployed agent. Example: their Telegram bot token.</p>
+    <div class="row">
+      <div>
+        <label>TELEGRAM_BOT_TOKEN</label>
+        <input id="telegram" placeholder="123456:ABC..." />
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <button onclick="saveUserSecrets()">Save user secrets</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>4. Create agent</h2>
     <div class="row">
       <div>
         <label>Agent name</label>
@@ -75,7 +90,14 @@ ui.get("/", (c) => {
       </div>
       <div>
         <label>Model</label>
-        <input id="model" value="anthropic/claude-sonnet-4" />
+        <select id="model">
+          <option value="anthropic/claude-sonnet-4" selected>anthropic/claude-sonnet-4</option>
+          <option value="anthropic/claude-opus-4-1">anthropic/claude-opus-4-1</option>
+          <option value="openai-codex/gpt-5.4">openai-codex/gpt-5.4</option>
+          <option value="openai/gpt-4.1">openai/gpt-4.1</option>
+          <option value="openrouter/openai/gpt-4.1-mini">openrouter/openai/gpt-4.1-mini</option>
+          <option value="openrouter/anthropic/claude-3.7-sonnet">openrouter/anthropic/claude-3.7-sonnet</option>
+        </select>
       </div>
     </div>
     <label>Expose these secrets to the running agent</label>
@@ -83,8 +105,9 @@ ui.get("/", (c) => {
       <label class="check"><input type="checkbox" value="ANTHROPIC_API_KEY" checked /> ANTHROPIC_API_KEY</label>
       <label class="check"><input type="checkbox" value="TAVILY_API_KEY" checked /> TAVILY_API_KEY</label>
       <label class="check"><input type="checkbox" value="OPENROUTER_API_KEY" /> OPENROUTER_API_KEY</label>
-      <label class="check"><input type="checkbox" value="TELEGRAM_BOT_TOKEN" /> TELEGRAM_BOT_TOKEN</label>
+      <label class="check"><input type="checkbox" value="FIRECRAWL_API_KEY" /> FIRECRAWL_API_KEY</label>
       <label class="check"><input type="checkbox" value="OPENAI_AUTH_JSON" /> OPENAI_AUTH_JSON</label>
+      <label class="check"><input type="checkbox" value="TELEGRAM_BOT_TOKEN" /> TELEGRAM_BOT_TOKEN</label>
     </div>
     <label>SOUL.md</label>
     <textarea id="soul">You are a concise assistant.</textarea>
@@ -112,19 +135,28 @@ function headers() {
     'Authorization': 'Bearer ' + document.getElementById('apiKey').value.trim(),
   };
 }
-async function saveSecrets() {
+async function saveAccountSecrets() {
   const payload = {};
   const vals = {
     ANTHROPIC_API_KEY: document.getElementById('anthropic').value.trim(),
     TAVILY_API_KEY: document.getElementById('tavily').value.trim(),
     OPENROUTER_API_KEY: document.getElementById('openrouter').value.trim(),
-    TELEGRAM_BOT_TOKEN: document.getElementById('telegram').value.trim(),
+    FIRECRAWL_API_KEY: document.getElementById('firecrawl').value.trim(),
     OPENAI_AUTH_JSON: document.getElementById('openaiAuth').value.trim(),
   };
   for (const [k, v] of Object.entries(vals)) if (v) payload[k] = v;
   const res = await fetch(document.getElementById('baseUrl').value + '/v1/secrets', { method:'PUT', headers: headers(), body: JSON.stringify(payload) });
   const data = await res.json();
-  log('Save secrets → ' + res.status, data);
+  log('Save account secrets → ' + res.status, data);
+}
+
+async function saveUserSecrets() {
+  const payload = {};
+  const telegram = document.getElementById('telegram').value.trim();
+  if (telegram) payload.TELEGRAM_BOT_TOKEN = telegram;
+  const res = await fetch(document.getElementById('baseUrl').value + '/v1/secrets', { method:'PUT', headers: headers(), body: JSON.stringify(payload) });
+  const data = await res.json();
+  log('Save user secrets → ' + res.status, data);
 }
 async function listSecrets() {
   const res = await fetch(document.getElementById('baseUrl').value + '/v1/secrets', { headers: headers() });
