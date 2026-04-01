@@ -50,36 +50,8 @@ export class OpenClawRuntime implements RuntimeAdapter {
     const openclawJson = this.buildConfig(config);
     const openclawB64 = Buffer.from(JSON.stringify(openclawJson, null, 2)).toString("base64");
 
-    const authProfiles = JSON.stringify({
-      version: 1,
-      profiles: {
-        ...(secrets.ANTHROPIC_API_KEY ? {
-          "anthropic:default": {
-            type: "token",
-            provider: "anthropic",
-            token: secrets.ANTHROPIC_API_KEY,
-          },
-        } : {}),
-        ...(secrets.OPENROUTER_API_KEY ? {
-          "openrouter:default": {
-            type: "token",
-            provider: "openrouter",
-            token: secrets.OPENROUTER_API_KEY,
-          },
-        } : {}),
-        ...(secrets.OPENAI_AUTH_JSON ? {
-          "openai-codex:default": JSON.parse(secrets.OPENAI_AUTH_JSON),
-        } : {}),
-      },
-      lastGood: secrets.ANTHROPIC_API_KEY
-        ? { anthropic: "anthropic:default" }
-        : secrets.OPENROUTER_API_KEY
-          ? { openrouter: "openrouter:default" }
-          : secrets.OPENAI_AUTH_JSON
-            ? { "openai-codex": "openai-codex:default" }
-            : {},
-    });
-    const authB64 = Buffer.from(authProfiles).toString("base64");
+    const authProfiles = this.buildAuthProfiles(secrets);
+    const authB64 = Buffer.from(JSON.stringify(authProfiles, null, 2)).toString("base64");
 
     return [
       "# Write openclaw.json",
@@ -150,6 +122,82 @@ WantedBy=multi-user.target`;
 
   configPath(): string {
     return "/home/agent/.openclaw";
+  }
+
+  private buildAuthProfiles(secrets: Record<string, string>): Record<string, unknown> {
+    const profiles: Record<string, unknown> = {
+      ...(secrets.ANTHROPIC_API_KEY ? {
+        "anthropic:default": {
+          type: "token",
+          provider: "anthropic",
+          token: secrets.ANTHROPIC_API_KEY,
+        },
+      } : {}),
+      ...(secrets.OPENROUTER_API_KEY ? {
+        "openrouter:default": {
+          type: "token",
+          provider: "openrouter",
+          token: secrets.OPENROUTER_API_KEY,
+        },
+      } : {}),
+    };
+
+    const order: Record<string, string[]> = {};
+    const lastGood: Record<string, string> = {};
+
+    if (secrets.OPENAI_AUTH_JSON) {
+      const raw = JSON.parse(secrets.OPENAI_AUTH_JSON) as any;
+      const email = raw?.email || raw?.tokens?.email || raw?.profile?.email || this.decodeJwtEmail(raw?.tokens?.access_token) || "default";
+      const access = raw?.tokens?.access_token || raw?.access_token || raw?.access;
+      const refresh = raw?.tokens?.refresh_token || raw?.refresh_token || raw?.refresh;
+      const expSeconds = this.decodeJwtExp(raw?.tokens?.access_token || raw?.access_token || raw?.access);
+      const expires = typeof raw?.expires === "number" ? raw.expires : expSeconds ? expSeconds * 1000 : undefined;
+      const key = `openai-codex:${email}`;
+
+      if (access && refresh) {
+        profiles[key] = {
+          type: "oauth",
+          provider: "openai-codex",
+          access,
+          refresh,
+          ...(expires ? { expires } : {}),
+          ...(email ? { email } : {}),
+        };
+        order["openai-codex"] = [key];
+        lastGood["openai-codex"] = key;
+      }
+    }
+
+    if (secrets.ANTHROPIC_API_KEY) lastGood.anthropic = "anthropic:default";
+    if (secrets.OPENROUTER_API_KEY) lastGood.openrouter = "openrouter:default";
+
+    return {
+      version: 1,
+      profiles,
+      ...(Object.keys(order).length ? { order } : {}),
+      ...(Object.keys(lastGood).length ? { lastGood } : {}),
+    };
+  }
+
+  private decodeJwtPayload(token?: string): any | null {
+    if (!token || typeof token !== "string" || token.split('.').length < 2) return null;
+    try {
+      const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+      return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  private decodeJwtEmail(token?: string): string | undefined {
+    const payload = this.decodeJwtPayload(token);
+    return payload?.email || payload?.["https://api.openai.com/profile"]?.email;
+  }
+
+  private decodeJwtExp(token?: string): number | undefined {
+    const payload = this.decodeJwtPayload(token);
+    return typeof payload?.exp === "number" ? payload.exp : undefined;
   }
 
   private buildConfig(config: AgentConfig): Record<string, unknown> {
