@@ -86,13 +86,49 @@ export class HermesRuntime implements RuntimeAdapter {
       "chmod 600 /home/agent/.hermes/.env",
       "",
       "# If provided, write Hermes-native auth store for Codex/OpenAI flow",
-      ...((secrets.OPENAI_AUTH_JSON ? [
-        "mkdir -p /home/agent/.hermes /home/agent/.codex",
-        `cat > /home/agent/.hermes/auth.json << 'HERMESAUTH'\n${secrets.OPENAI_AUTH_JSON}\nHERMESAUTH`,
-        `cat > /home/agent/.codex/auth.json << 'CODEXAUTH'\n${secrets.OPENAI_AUTH_JSON}\nCODEXAUTH`,
-        "chown agent:agent /home/agent/.hermes/auth.json /home/agent/.codex/auth.json",
-        "chmod 600 /home/agent/.hermes/auth.json /home/agent/.codex/auth.json",
-      ] : [])),
+      ...((secrets.OPENAI_AUTH_JSON ? (() => {
+        const raw = JSON.parse(secrets.OPENAI_AUTH_JSON) as any;
+        const authJson = JSON.stringify({
+          version: 1,
+          providers: {
+            "openai-codex": {
+              tokens: {
+                access_token: raw?.tokens?.access_token || raw?.access_token,
+                refresh_token: raw?.tokens?.refresh_token || raw?.refresh_token,
+              },
+              last_refresh: raw?.last_refresh || new Date().toISOString(),
+              auth_mode: raw?.auth_mode || "chatgpt",
+            },
+          },
+          active_provider: "openai-codex",
+          updated_at: new Date().toISOString(),
+          credential_pool: {
+            "openai-codex": [
+              {
+                id: "botboot",
+                label: "botboot_import",
+                auth_type: "oauth",
+                priority: 0,
+                source: "botboot_import",
+                access_token: raw?.tokens?.access_token || raw?.access_token,
+                refresh_token: raw?.tokens?.refresh_token || raw?.refresh_token,
+                last_status: null,
+                last_status_at: null,
+                last_error_code: null,
+                base_url: "https://chatgpt.com/backend-api/codex",
+                last_refresh: raw?.last_refresh || new Date().toISOString(),
+                request_count: 0,
+              },
+            ],
+          },
+        }, null, 2);
+        return [
+          "mkdir -p /home/agent/.hermes",
+          `cat > /home/agent/.hermes/auth.json << 'HERMESAUTH'\n${authJson}\nHERMESAUTH`,
+          "chown agent:agent /home/agent/.hermes/auth.json",
+          "chmod 600 /home/agent/.hermes/auth.json",
+        ];
+      })() : [])),
       "",
       "# Write platform secrets for tool env vars",
       "mkdir -p /etc/botboot",
@@ -183,23 +219,18 @@ WantedBy=multi-user.target`;
 
   private buildConfigYaml(config: AgentConfig): string {
     const model = config.model || "anthropic/claude-sonnet-4";
+    const isCodexStyle = model.startsWith("openai-codex/") || model.startsWith("gpt-5") || model.startsWith("gpt-4.1") || model.startsWith("o1") || model.startsWith("o3");
+    const defaultModel = model.startsWith("openai-codex/") ? model.replace(/^openai-codex\//, "") : model;
 
-    // Hermes-native provider handling:
-    // - For OpenAI/Codex-style models, avoid forcing guessed provider literals in config.yaml.
-    //   Hermes can resolve these better from its own auth/provider setup.
-    // - For Anthropic/Google through aggregator paths, keep openrouter explicit.
-    const forceProvider = (() => {
-      if (model.startsWith("anthropic/") || model.startsWith("claude")) return "openrouter";
-      if (model.startsWith("google/") || model.startsWith("gemini")) return "openrouter";
-      return null;
-    })();
+    // Match the working manual Hermes setup exactly for Codex/ChatGPT auth.
+    const modelBlock = isCodexStyle
+      ? `model:\n  provider: \"openai-codex\"\n  base_url: \"https://chatgpt.com/backend-api/codex\"\n  default: \"${defaultModel}\"\n`
+      : `model:\n  default: \"${defaultModel}\"\n${((model.startsWith("anthropic/") || model.startsWith("claude") || model.startsWith("google/") || model.startsWith("gemini")) ? '  provider: "openrouter"\n' : '')}`;
 
     return `# BotBoot — Hermes Agent Config
 # Generated at provisioning time. Edit via BotBoot API or SSH.
 
-model:
-  default: "${model}"
-${forceProvider ? `  provider: "${forceProvider}"\n` : ""}
+${modelBlock}
 terminal:
   backend: local
   timeout: 180
@@ -238,6 +269,7 @@ gateway:
     if (secrets.OPENAI_AUTH_JSON) {
       lines.push(`OPENAI_AUTH_JSON=${secrets.OPENAI_AUTH_JSON}`);
       lines.push("HERMES_INFERENCE_PROVIDER=openai-codex");
+      lines.push("OPENAI_BASE_URL=https://chatgpt.com/backend-api/codex");
     }
 
     // Messaging
