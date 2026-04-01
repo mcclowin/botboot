@@ -85,6 +85,15 @@ export class HermesRuntime implements RuntimeAdapter {
       `echo '${envB64}' | base64 -d > /home/agent/.hermes/.env`,
       "chmod 600 /home/agent/.hermes/.env",
       "",
+      "# If provided, write Hermes-native auth store for Codex/OpenAI flow",
+      ...((secrets.OPENAI_AUTH_JSON ? [
+        "mkdir -p /home/agent/.hermes /home/agent/.codex",
+        `cat > /home/agent/.hermes/auth.json << 'HERMESAUTH'\n${secrets.OPENAI_AUTH_JSON}\nHERMESAUTH`,
+        `cat > /home/agent/.codex/auth.json << 'CODEXAUTH'\n${secrets.OPENAI_AUTH_JSON}\nCODEXAUTH`,
+        "chown agent:agent /home/agent/.hermes/auth.json /home/agent/.codex/auth.json",
+        "chmod 600 /home/agent/.hermes/auth.json /home/agent/.codex/auth.json",
+      ] : [])),
+      "",
       "# Write platform secrets for tool env vars",
       "mkdir -p /etc/botboot",
       "cat > /etc/botboot/secrets.env << 'SECRETS'",
@@ -175,20 +184,22 @@ WantedBy=multi-user.target`;
   private buildConfigYaml(config: AgentConfig): string {
     const model = config.model || "anthropic/claude-sonnet-4";
 
-    // Determine provider from model string
-    let provider = "openrouter";
-    if (model.startsWith("anthropic/") || model.startsWith("claude")) provider = "openrouter";
-    else if (model.startsWith("openai-codex/") || model.startsWith("gpt-5") || model.startsWith("gpt-4.1") || model.startsWith("o1") || model.startsWith("o3")) provider = "main";
-    else if (model.startsWith("openai/") || model.startsWith("gpt")) provider = "main";
-    else if (model.startsWith("google/") || model.startsWith("gemini")) provider = "openrouter";
+    // Hermes-native provider handling:
+    // - For OpenAI/Codex-style models, avoid forcing guessed provider literals in config.yaml.
+    //   Hermes can resolve these better from its own auth/provider setup.
+    // - For Anthropic/Google through aggregator paths, keep openrouter explicit.
+    const forceProvider = (() => {
+      if (model.startsWith("anthropic/") || model.startsWith("claude")) return "openrouter";
+      if (model.startsWith("google/") || model.startsWith("gemini")) return "openrouter";
+      return null;
+    })();
 
     return `# BotBoot — Hermes Agent Config
 # Generated at provisioning time. Edit via BotBoot API or SSH.
 
 model:
   default: "${model}"
-  provider: "${provider}"
-
+${forceProvider ? `  provider: "${forceProvider}"\n` : ""}
 terminal:
   backend: local
   timeout: 180
@@ -222,9 +233,11 @@ gateway:
     if (secrets.ANTHROPIC_API_KEY) lines.push(`ANTHROPIC_API_KEY=${secrets.ANTHROPIC_API_KEY}`);
     if (secrets.OPENROUTER_API_KEY) lines.push(`OPENROUTER_API_KEY=${secrets.OPENROUTER_API_KEY}`);
 
-    // Codex / ChatGPT OAuth-style auth. Hermes docs use provider "codex" for this path.
+    // Codex / ChatGPT OAuth-style auth.
+    // Keep raw JSON available in env for tooling, and also point Hermes inference toward openai-codex.
     if (secrets.OPENAI_AUTH_JSON) {
       lines.push(`OPENAI_AUTH_JSON=${secrets.OPENAI_AUTH_JSON}`);
+      lines.push("HERMES_INFERENCE_PROVIDER=openai-codex");
     }
 
     // Messaging
