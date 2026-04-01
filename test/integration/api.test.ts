@@ -17,10 +17,12 @@ process.env.SECRETS_ENCRYPTION_KEY = "a".repeat(64);
 import { db } from "../../src/lib/db.js";
 import { generateApiKey } from "../../src/lib/crypto.js";
 import { encrypt, decrypt } from "../../src/lib/crypto.js";
+import { createTestApiKey, putSecrets } from "../helpers/api.js";
 
 describe("Database Integration", () => {
   let testAccountId: string;
   let testApiKey: string;
+  const testEmail = process.env.TEST_ACCOUNT_EMAIL || "test@botboot.dev";
 
   before(async () => {
     // Check if DB is reachable
@@ -43,21 +45,21 @@ describe("Database Integration", () => {
 
   describe("Accounts", () => {
     it("should create an account", async () => {
-      const account = await db.getOrCreateAccount("test@botboot.dev");
+      const account = await db.getOrCreateAccount(testEmail);
       assert.ok(account.id);
-      assert.equal(account.email, "test@botboot.dev");
+      assert.equal(account.email, testEmail);
       testAccountId = account.id;
     });
 
     it("should return existing account on duplicate email", async () => {
-      const account = await db.getOrCreateAccount("test@botboot.dev");
+      const account = await db.getOrCreateAccount(testEmail);
       assert.equal(account.id, testAccountId);
     });
 
     it("should get account by id", async () => {
       const account = await db.getAccountById(testAccountId);
       assert.ok(account);
-      assert.equal(account.email, "test@botboot.dev");
+      assert.equal(account.email, testEmail);
     });
   });
 
@@ -202,6 +204,36 @@ describe("Database Integration", () => {
 
       const secrets = await db.getSecrets(testAccountId);
       assert.ok(!secrets.find((s) => s.key_name === "ANTHROPIC_API_KEY"));
+    });
+  });
+
+  describe("Live API secret flow", () => {
+    it("should create an API key via the real auth endpoint and inject TEST_* secrets through /v1/secrets", async () => {
+      if (!process.env.TEST_ANTHROPIC_API_KEY && !process.env.TEST_TAVILY_API_KEY && !process.env.TEST_TELEGRAM_BOT_TOKEN && !process.env.TEST_OPENAI_AUTH_JSON) {
+        console.log("⚠️  Skipping live API secret flow — no TEST_* secret fixtures set in .env.test");
+        return;
+      }
+
+      const created = await createTestApiKey(testEmail, process.env.TEST_ACCOUNT_NAME || "test-live-key");
+      assert.ok(created.key.startsWith("bb_"));
+      testApiKey = created.key;
+      testAccountId = created.account_id;
+
+      const payload: Record<string, string> = {};
+      if (process.env.TEST_ANTHROPIC_API_KEY) payload.ANTHROPIC_API_KEY = process.env.TEST_ANTHROPIC_API_KEY;
+      if (process.env.TEST_TAVILY_API_KEY) payload.TAVILY_API_KEY = process.env.TEST_TAVILY_API_KEY;
+      if (process.env.TEST_OPENROUTER_API_KEY) payload.OPENROUTER_API_KEY = process.env.TEST_OPENROUTER_API_KEY;
+      if (process.env.TEST_FIRECRAWL_API_KEY) payload.FIRECRAWL_API_KEY = process.env.TEST_FIRECRAWL_API_KEY;
+      if (process.env.TEST_TELEGRAM_BOT_TOKEN) payload.TELEGRAM_BOT_TOKEN = process.env.TEST_TELEGRAM_BOT_TOKEN;
+      if (process.env.TEST_OPENAI_AUTH_JSON) payload.OPENAI_AUTH_JSON = process.env.TEST_OPENAI_AUTH_JSON;
+
+      const result = await putSecrets(created.key, payload);
+      assert.ok(result.success);
+
+      const stored = await db.getSecrets(testAccountId);
+      for (const expectedKey of Object.keys(payload)) {
+        assert.ok(stored.find((s) => s.key_name === expectedKey), `Expected stored secret ${expectedKey}`);
+      }
     });
   });
 
