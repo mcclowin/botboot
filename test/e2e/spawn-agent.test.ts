@@ -27,6 +27,7 @@ import { HetznerProvider } from "../../src/providers/hetzner.js";
 import { getRuntime } from "../../src/runtimes/index.js";
 import { buildCloudInit } from "../../src/lib/cloud-init.js";
 import * as ssh from "../../src/lib/ssh.js";
+import { sleep } from "../helpers/wait.js";
 
 const SKIP_REASON = !env.HETZNER_API_TOKEN
   ? "HETZNER_API_TOKEN not set — skipping E2E spawn test"
@@ -34,21 +35,37 @@ const SKIP_REASON = !env.HETZNER_API_TOKEN
     ? "HETZNER_SSH_KEY_ID not set — skipping E2E spawn test"
     : null;
 
+const TEST_MODEL = process.env.TEST_MODEL || "openai-codex/gpt-5.4";
+const TEST_KEEP_ALIVE_MIN = parseInt(process.env.TEST_KEEP_ALIVE_MIN || "0", 10);
+const TEST_KEEP_ALIVE = process.env.TEST_KEEP_ALIVE === "1" || TEST_KEEP_ALIVE_MIN > 0;
+const TEST_OPENAI_AUTH_JSON = process.env.TEST_OPENAI_AUTH_JSON || "";
+const TEST_TELEGRAM_BOT_TOKEN = process.env.TEST_TELEGRAM_BOT_TOKEN || "";
+
 describe("E2E: Spawn Agent on Hetzner", { skip: SKIP_REASON ?? false }, () => {
   const provider = new HetznerProvider();
   let machineId: string | null = null;
   let machineIp: string | null = null;
 
   after(async () => {
-    // ALWAYS clean up, even if test fails
-    if (machineId) {
-      console.log(`🧹 Cleaning up Hetzner server ${machineId}...`);
-      try {
-        await provider.deleteMachine(machineId);
-        console.log("✅ Server deleted");
-      } catch (err) {
-        console.error(`⚠️  Failed to delete server ${machineId} — DELETE MANUALLY!`, err);
+    if (!machineId) return;
+
+    if (TEST_KEEP_ALIVE) {
+      console.log(`⏸️  Keeping OpenClaw test server ${machineId} alive at ${machineIp} for manual checks.`);
+      if (TEST_KEEP_ALIVE_MIN > 0) {
+        console.log(`⏳ Waiting ${TEST_KEEP_ALIVE_MIN} minute(s) before cleanup...`);
+        await sleep(TEST_KEEP_ALIVE_MIN * 60_000);
+      } else {
+        console.log("ℹ️  TEST_KEEP_ALIVE=1 set — skipping automatic cleanup. Delete it manually when done.");
+        return;
       }
+    }
+
+    console.log(`🧹 Cleaning up Hetzner server ${machineId}...`);
+    try {
+      await provider.deleteMachine(machineId);
+      console.log("✅ Server deleted");
+    } catch (err) {
+      console.error(`⚠️  Failed to delete server ${machineId} — DELETE MANUALLY!`, err);
     }
   });
 
@@ -62,10 +79,13 @@ describe("E2E: Spawn Agent on Hetzner", { skip: SKIP_REASON ?? false }, () => {
         runtime,
         config: {
           name: "e2e-test-agent",
-          model: "anthropic/claude-sonnet-4",
+          model: TEST_MODEL,
+          telegramBotToken: TEST_TELEGRAM_BOT_TOKEN || undefined,
         },
         secrets: {
-          ANTHROPIC_API_KEY: env.PLATFORM_ANTHROPIC_KEY || "sk-test-placeholder",
+          ...(TEST_OPENAI_AUTH_JSON ? { OPENAI_AUTH_JSON: TEST_OPENAI_AUTH_JSON } : {}),
+          ...(env.PLATFORM_ANTHROPIC_KEY ? { ANTHROPIC_API_KEY: env.PLATFORM_ANTHROPIC_KEY } : {}),
+          ...(env.PLATFORM_OPENROUTER_KEY ? { OPENROUTER_API_KEY: env.PLATFORM_OPENROUTER_KEY } : {}),
         },
         files: {
           "SOUL.md": "You are a test agent created by BotBoot E2E tests. Be brief.",
@@ -162,6 +182,10 @@ describe("E2E: Spawn Agent on Hetzner", { skip: SKIP_REASON ?? false }, () => {
 
     it("should clean up the server", async () => {
       if (!machineId) return;
+      if (TEST_KEEP_ALIVE) {
+        console.log("⏭️  Skipping immediate OpenClaw cleanup because TEST_KEEP_ALIVE is enabled.");
+        return;
+      }
       console.log(`🧹 Deleting server ${machineId}...`);
       await provider.deleteMachine(machineId);
       machineId = null; // Prevent double-delete in after()
@@ -176,14 +200,25 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
   let machineIp: string | null = null;
 
   after(async () => {
-    if (machineId) {
-      console.log(`🧹 Cleaning up Hetzner server ${machineId}...`);
-      try {
-        await provider.deleteMachine(machineId);
-        console.log("✅ Server deleted");
-      } catch (err) {
-        console.error(`⚠️  Failed to delete server ${machineId} — DELETE MANUALLY!`, err);
+    if (!machineId) return;
+
+    if (TEST_KEEP_ALIVE) {
+      console.log(`⏸️  Keeping Hermes test server ${machineId} alive at ${machineIp} for manual checks.`);
+      if (TEST_KEEP_ALIVE_MIN > 0) {
+        console.log(`⏳ Waiting ${TEST_KEEP_ALIVE_MIN} minute(s) before cleanup...`);
+        await sleep(TEST_KEEP_ALIVE_MIN * 60_000);
+      } else {
+        console.log("ℹ️  TEST_KEEP_ALIVE=1 set — skipping automatic cleanup. Delete it manually when done.");
+        return;
       }
+    }
+
+    console.log(`🧹 Cleaning up Hetzner server ${machineId}...`);
+    try {
+      await provider.deleteMachine(machineId);
+      console.log("✅ Server deleted");
+    } catch (err) {
+      console.error(`⚠️  Failed to delete server ${machineId} — DELETE MANUALLY!`, err);
     }
   });
 
@@ -195,10 +230,12 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
       runtime,
       config: {
         name: "e2e-hermes-test",
-        model: "anthropic/claude-sonnet-4",
+        model: TEST_MODEL,
       },
       secrets: {
-        ANTHROPIC_API_KEY: env.PLATFORM_ANTHROPIC_KEY || "sk-test-placeholder",
+        ...(TEST_OPENAI_AUTH_JSON ? { OPENAI_AUTH_JSON: TEST_OPENAI_AUTH_JSON } : {}),
+        ...(env.PLATFORM_ANTHROPIC_KEY ? { ANTHROPIC_API_KEY: env.PLATFORM_ANTHROPIC_KEY } : {}),
+        ...(env.PLATFORM_OPENROUTER_KEY ? { OPENROUTER_API_KEY: env.PLATFORM_OPENROUTER_KEY } : {}),
       },
       files: {
         "SOUL.md": "You are a Hermes test agent created by BotBoot E2E tests. Be brief and helpful.",
@@ -311,6 +348,10 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
 
   it("should clean up the server", async () => {
     if (!machineId) return;
+    if (TEST_KEEP_ALIVE) {
+      console.log("⏭️  Skipping immediate Hermes cleanup because TEST_KEEP_ALIVE is enabled.");
+      return;
+    }
     console.log(`🧹 Deleting server ${machineId}...`);
     await provider.deleteMachine(machineId);
     machineId = null;
