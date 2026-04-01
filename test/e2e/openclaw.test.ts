@@ -11,6 +11,7 @@ import { getRuntime } from "../../src/runtimes/index.js";
 import { buildCloudInit } from "../../src/lib/cloud-init.js";
 import * as ssh from "../../src/lib/ssh.js";
 import { sleep } from "../helpers/wait.js";
+import { StageTimer, appendTimingArtifact } from "../helpers/timing.js";
 
 const SKIP_REASON = !env.HETZNER_API_TOKEN
   ? "HETZNER_API_TOKEN not set — skipping E2E spawn test"
@@ -26,10 +27,16 @@ const TEST_TELEGRAM_BOT_TOKEN_OPENCLAW = process.env.TEST_TELEGRAM_BOT_TOKEN_OPE
 
 describe("E2E: Spawn OpenClaw Agent on Hetzner", { skip: SKIP_REASON ?? false }, () => {
   const provider = new HetznerProvider();
+  const timer = new StageTimer();
+  const suiteStart = Date.now();
   let machineId: string | null = null;
   let machineIp: string | null = null;
 
   after(async () => {
+    timer.set("total_suite_ms", Date.now() - suiteStart);
+    timer.print();
+    appendTimingArtifact({ runtime: "openclaw", model: TEST_MODEL, machineId, machineIp, ...timer.summary() });
+
     if (!machineId) return;
 
     if (TEST_KEEP_ALIVE) {
@@ -75,12 +82,14 @@ describe("E2E: Spawn OpenClaw Agent on Hetzner", { skip: SKIP_REASON ?? false },
     });
 
     console.log(`🚀 Creating Hetzner VPS: ${testName}...`);
+    timer.start("create_machine_ms");
     const machine = await provider.createMachine({
       name: testName,
       cloudInit,
       labels: { test: "true", runtime: "openclaw" },
     });
 
+    timer.end("create_machine_ms");
     machineId = machine.id;
     machineIp = machine.ip;
     console.log(`📦 Server created: id=${machine.id} ip=${machine.ip}`);
@@ -96,12 +105,19 @@ describe("E2E: Spawn OpenClaw Agent on Hetzner", { skip: SKIP_REASON ?? false },
     let reachable = false;
 
     console.log(`⏳ Waiting for SSH on ${machineIp}...`);
+    timer.start("ssh_ready_ms");
     while (Date.now() - start < maxWait) {
-      reachable = await ssh.ping(machineIp);
+      try {
+        const result = await ssh.exec(machineIp, "echo ok", { user: "root", timeoutMs: 10_000 });
+        reachable = result.stdout.trim() === "ok";
+      } catch {
+        reachable = false;
+      }
       if (reachable) break;
       await sleep(10_000);
       process.stdout.write(".");
     }
+    timer.end("ssh_ready_ms");
     console.log(reachable ? "\n✅ SSH reachable" : "\n❌ SSH timeout");
     assert.ok(reachable, `SSH not reachable after ${maxWait / 1000}s`);
   });
@@ -114,6 +130,7 @@ describe("E2E: Spawn OpenClaw Agent on Hetzner", { skip: SKIP_REASON ?? false },
     let provisioned = false;
 
     console.log("⏳ Waiting for provisioning to complete...");
+    timer.start("provision_complete_ms");
     while (Date.now() - start < maxWait) {
       const result = await ssh.exec(machineIp, "tail -3 /var/log/botboot-provision.log 2>/dev/null || echo 'no log'", { user: "root" });
       if (result.stdout.includes("Provisioning complete")) {
@@ -123,6 +140,7 @@ describe("E2E: Spawn OpenClaw Agent on Hetzner", { skip: SKIP_REASON ?? false },
       await sleep(15_000);
       process.stdout.write(".");
     }
+    timer.end("provision_complete_ms");
     console.log(provisioned ? "\n✅ Provisioning complete" : "\n❌ Provisioning timeout");
     assert.ok(provisioned, `Provisioning not complete after ${maxWait / 1000}s`);
   });
@@ -130,13 +148,20 @@ describe("E2E: Spawn OpenClaw Agent on Hetzner", { skip: SKIP_REASON ?? false },
   it("should have OpenClaw installed and gateway running", async function () {
     if (!machineIp) return this.skip();
 
+    timer.start("gateway_ready_ms");
     const version = await ssh.exec(machineIp, "openclaw --version 2>/dev/null || echo 'not found'");
     console.log(`📦 OpenClaw version: ${version.stdout.trim()}`);
     assert.ok(!version.stdout.includes("not found"), "OpenClaw should be installed");
 
-    const status = await ssh.exec(machineIp, "systemctl is-active botboot-agent 2>/dev/null || echo inactive");
-    console.log(`🔌 Gateway status: ${status.stdout.trim()}`);
-    assert.equal(status.stdout.trim(), "active", "Gateway should be active");
+    let active = false;
+    for (let i = 0; i < 6; i++) {
+      const status = await ssh.exec(machineIp, "systemctl is-active botboot-agent 2>/dev/null || echo inactive");
+      console.log(`🔌 Gateway status: ${status.stdout.trim()}`);
+      if (status.stdout.trim() === "active") { active = true; break; }
+      await sleep(10_000);
+    }
+    timer.end("gateway_ready_ms");
+    assert.ok(active, "Gateway should be active");
   });
 
   it("should have identity files written", async function () {

@@ -11,6 +11,7 @@ import { getRuntime } from "../../src/runtimes/index.js";
 import { buildCloudInit } from "../../src/lib/cloud-init.js";
 import * as ssh from "../../src/lib/ssh.js";
 import { sleep } from "../helpers/wait.js";
+import { StageTimer, appendTimingArtifact } from "../helpers/timing.js";
 
 const SKIP_REASON = !env.HETZNER_API_TOKEN
   ? "HETZNER_API_TOKEN not set — skipping E2E spawn test"
@@ -26,10 +27,16 @@ const TEST_TELEGRAM_BOT_TOKEN_HERMES = process.env.TEST_TELEGRAM_BOT_TOKEN_HERME
 
 describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, () => {
   const provider = new HetznerProvider();
+  const timer = new StageTimer();
+  const suiteStart = Date.now();
   let machineId: string | null = null;
   let machineIp: string | null = null;
 
   after(async () => {
+    timer.set("total_suite_ms", Date.now() - suiteStart);
+    timer.print();
+    appendTimingArtifact({ runtime: "hermes", model: TEST_MODEL, machineId, machineIp, ...timer.summary() });
+
     if (!machineId) return;
 
     if (TEST_KEEP_ALIVE) {
@@ -75,12 +82,14 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
     });
 
     console.log(`🚀 Creating Hetzner VPS: ${testName}...`);
+    timer.start("create_machine_ms");
     const machine = await provider.createMachine({
       name: testName,
       cloudInit,
       labels: { test: "true", runtime: "hermes" },
     });
 
+    timer.end("create_machine_ms");
     machineId = machine.id;
     machineIp = machine.ip;
     console.log(`📦 Server created: id=${machine.id} ip=${machine.ip}`);
@@ -96,6 +105,7 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
     let reachable = false;
 
     console.log(`⏳ Waiting for SSH (root) on ${machineIp}...`);
+    timer.start("ssh_ready_ms");
     while (Date.now() - start < maxWait) {
       try {
         const result = await ssh.exec(machineIp, "echo ok", { user: "root", timeoutMs: 10_000 });
@@ -104,6 +114,7 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
       await sleep(10_000);
       process.stdout.write(".");
     }
+    timer.end("ssh_ready_ms");
     console.log(reachable ? "\n✅ SSH reachable (root)" : "\n❌ SSH timeout");
     assert.ok(reachable);
   });
@@ -116,6 +127,7 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
     let provisioned = false;
 
     console.log("⏳ Waiting for Hermes provisioning...");
+    timer.start("provision_complete_ms");
     while (Date.now() - start < maxWait) {
       try {
         const result = await ssh.exec(machineIp, "tail -3 /var/log/botboot-provision.log 2>/dev/null || echo 'no log'", { user: "root" });
@@ -128,6 +140,7 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
       } catch {}
       await sleep(15_000);
     }
+    timer.end("provision_complete_ms");
     console.log(provisioned ? "\n✅ Hermes provisioning complete" : "\n❌ Hermes provisioning timeout");
     assert.ok(provisioned, `Provisioning not complete after ${maxWait / 1000}s`);
   });
@@ -135,6 +148,7 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
   it("should have Hermes installed and gateway running", async function () {
     if (!machineIp) return this.skip();
 
+    timer.start("gateway_ready_ms");
     const version = await ssh.exec(machineIp, "/usr/local/bin/hermes version 2>/dev/null || hermes version 2>/dev/null || echo 'not found'", { user: "root" });
     console.log(`📦 Hermes version: ${version.stdout.trim()}`);
     assert.ok(!version.stdout.includes("not found"), "Hermes should be installed");
@@ -146,6 +160,7 @@ describe("E2E: Spawn Hermes Agent on Hetzner", { skip: SKIP_REASON ?? false }, (
       if (status.stdout.trim() === "active") { gatewayActive = true; break; }
       await sleep(10_000);
     }
+    timer.end("gateway_ready_ms");
     assert.ok(gatewayActive, "Gateway should be active");
   });
 

@@ -165,6 +165,7 @@ WantedBy=multi-user.target`;
         defaults: {
           workspace: this.workspacePath(),
           maxConcurrent: 4,
+          model: config.model || "anthropic/claude-opus-4-6",
         },
       },
       gateway: {
