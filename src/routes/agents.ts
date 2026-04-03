@@ -56,7 +56,7 @@ agents.post("/", async (c) => {
   // Resolve only explicitly exposed secrets (3-tier cascade)
   const secrets = await resolveSecrets(accountId, undefined, exposedSecrets);
 
-  const telegramBotToken = body.telegramBotToken || secrets.TELEGRAM_BOT_TOKEN;
+  const telegramBotToken = body.telegramBotToken;
 
   // Validate at least one LLM key exists
   if (!secrets.ANTHROPIC_API_KEY && !secrets.OPENROUTER_API_KEY && !secrets.OPENAI_AUTH_JSON) {

@@ -72,16 +72,13 @@ ui.get("/", (c) => {
   </div>
 
   <div class="card">
-    <h2>3. End-user secrets</h2>
-    <p class="muted">These belong to the end user using the deployed agent. Example: their Telegram bot token.</p>
+    <h2>3. User-scoped Telegram token</h2>
+    <p class="muted">Telegram is user/agent scoped. It is passed explicitly during create and is not stored as an account-level secret.</p>
     <div class="row">
       <div>
-        <label>TELEGRAM_BOT_TOKEN</label>
+        <label>telegramBotToken</label>
         <input id="telegram" placeholder="123456:ABC..." />
       </div>
-    </div>
-    <div style="margin-top:12px;">
-      <button onclick="saveUserSecrets()">Save user secrets</button>
     </div>
   </div>
 
@@ -111,7 +108,6 @@ ui.get("/", (c) => {
       <label class="check"><input type="checkbox" value="OPENROUTER_API_KEY" /> OPENROUTER_API_KEY</label>
       <label class="check"><input type="checkbox" value="FIRECRAWL_API_KEY" /> FIRECRAWL_API_KEY</label>
       <label class="check"><input type="checkbox" value="OPENAI_AUTH_JSON" /> OPENAI_AUTH_JSON</label>
-      <label class="check"><input type="checkbox" value="TELEGRAM_BOT_TOKEN" /> TELEGRAM_BOT_TOKEN</label>
     </div>
     <label>SOUL.md</label>
     <textarea id="soul">You are a concise assistant.</textarea>
@@ -179,14 +175,6 @@ async function saveAccountSecrets() {
   log('Save account secrets → ' + res.status, data);
 }
 
-async function saveUserSecrets() {
-  const payload = {};
-  const telegram = document.getElementById('telegram').value.trim();
-  if (telegram) payload.TELEGRAM_BOT_TOKEN = telegram;
-  const res = await fetch(document.getElementById('baseUrl').value + '/v1/secrets', { method:'PUT', headers: headers(), body: JSON.stringify(payload) });
-  const data = await res.json();
-  log('Save user secrets → ' + res.status, data);
-}
 async function listSecrets() {
   const res = await fetch(document.getElementById('baseUrl').value + '/v1/secrets', { headers: headers() });
   const data = await res.json();
