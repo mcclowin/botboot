@@ -73,7 +73,7 @@ async function getLogs(apiKey: string, agentId: string) {
 }
 
 describe("API-driven E2E", { skip: SKIP_REASON ?? false }, () => {
-  it("should create OpenClaw and Hermes agents via BotBoot APIs and reach healthy state", async () => {
+  it("should create OpenClaw agent via BotBoot APIs and reach healthy state", async () => {
     const server = spawn("node", ["--import", "tsx", "src/index.ts"], {
       cwd: process.cwd(),
       stdio: "inherit",

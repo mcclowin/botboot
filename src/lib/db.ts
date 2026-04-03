@@ -209,19 +209,22 @@ export const db = {
   },
 
   async listAgents(accountId: string): Promise<Agent[]> {
-    return sql<Agent[]>`
-      SELECT *, COALESCE(exposed_secrets, '[]'::jsonb) AS exposed_secrets FROM agents
+    const rows = await sql<Agent[]>`
+      SELECT * FROM agents
       WHERE account_id = ${accountId} AND state != 'deleted'
       ORDER BY created_at DESC
     `;
+    return rows.map((r) => ({ ...r, exposed_secrets: r.exposed_secrets || [] }));
   },
 
   async getAgent(accountId: string, agentId: string): Promise<Agent | null> {
     const rows = await sql<Agent[]>`
-      SELECT *, COALESCE(exposed_secrets, '[]'::jsonb) AS exposed_secrets FROM agents
+      SELECT * FROM agents
       WHERE id = ${agentId} AND account_id = ${accountId}
     `;
-    return rows[0] || null;
+    const row = rows[0] || null;
+    if (row) row.exposed_secrets = row.exposed_secrets || [];
+    return row;
   },
 
   async updateAgent(agentId: string, updates: Partial<Agent>): Promise<void> {
