@@ -52,7 +52,7 @@ files.put("/:id/files/*", async (c) => {
     return c.json({ error: "Invalid path" }, 400);
   }
 
-  const { content } = await c.req.json<{ content: string }>();
+  const { content, encoding } = await c.req.json<{ content: string; encoding?: "utf8" | "base64" }>();
   if (content === undefined) return c.json({ error: "content required" }, 400);
 
   const agent = await db.getAgent(accountId, agentId);
@@ -62,7 +62,8 @@ files.put("/:id/files/*", async (c) => {
   const fullPath = `${runtime.workspacePath()}/${filePath}`;
 
   try {
-    await ssh.writeFile(agent.ip, fullPath, content);
+    const decoded = encoding === "base64" ? Buffer.from(content, "base64").toString("utf8") : content;
+    await ssh.writeFile(agent.ip, fullPath, decoded);
     return c.json({ success: true, path: filePath });
   } catch (err: unknown) {
     return c.json({ error: err instanceof Error ? err.message : "Write failed" }, 500);

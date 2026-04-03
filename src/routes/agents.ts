@@ -297,6 +297,34 @@ agents.get("/:id/boot-status", async (c) => {
   }
 });
 
+// ── POST /v1/agents/:id/ssh ─────────────────────────────────────────────
+
+agents.post("/:id/ssh", async (c) => {
+  const accountId = c.get("accountId");
+  const agent = await db.getAgent(accountId, c.req.param("id"));
+  if (!agent || !agent.ip) return c.json({ error: "Agent not found" }, 404);
+
+  const { command } = await c.req.json<{ command: string }>();
+  if (!command) return c.json({ error: "command required" }, 400);
+
+  // Block destructive commands
+  const blocked = ["rm -rf /", "mkfs", "dd if=", "> /dev/sd"];
+  if (blocked.some((b) => command.includes(b))) {
+    return c.json({ error: "Command blocked" }, 403);
+  }
+
+  try {
+    const result = await ssh.exec(agent.ip, command, { timeoutMs: 60_000 });
+    return c.json({
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    });
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : "SSH failed" }, 500);
+  }
+});
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 async function resolveSecrets(accountId: string, agentId?: string, exposedKeys?: string[]): Promise<Record<string, string>> {
