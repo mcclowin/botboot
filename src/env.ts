@@ -36,6 +36,13 @@ export const env = {
   PLATFORM_TAVILY_KEY: optional("PLATFORM_TAVILY_KEY", ""),
   PLATFORM_FIRECRAWL_KEY: optional("PLATFORM_FIRECRAWL_KEY", ""),
 
+  // Frontend redirect target
+  FRONTEND_URL: optional("FRONTEND_URL", "http://localhost:3000"),
+
+  // Stytch (optional — enables session-based auth for end-user dashboards)
+  STYTCH_PROJECT_ID: optional("STYTCH_PROJECT_ID", ""),
+  STYTCH_SECRET: optional("STYTCH_SECRET", ""),
+
   // Admin
   ADMIN_API_KEY: optional("ADMIN_API_KEY", ""),
 };
