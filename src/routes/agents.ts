@@ -56,9 +56,9 @@ agents.post("/", async (c) => {
   const secrets = await resolveSecrets(accountId, undefined, exposedSecrets);
 
   // Validate at least one LLM key exists
-  if (!secrets.ANTHROPIC_API_KEY && !secrets.OPENROUTER_API_KEY) {
+  if (!secrets.ANTHROPIC_API_KEY && !secrets.OPENROUTER_API_KEY && !secrets.OPENAI_AUTH_JSON) {
     return c.json({
-      error: "No LLM API key configured. Set ANTHROPIC_API_KEY or OPENROUTER_API_KEY via PUT /v1/secrets",
+      error: "No LLM API key configured. Set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_AUTH_JSON via PUT /v1/secrets",
     }, 400);
   }
 
@@ -328,6 +328,7 @@ async function resolveSecrets(accountId: string, agentId?: string, exposedKeys?:
     return {
       ...(secrets.ANTHROPIC_API_KEY ? { ANTHROPIC_API_KEY: secrets.ANTHROPIC_API_KEY } : {}),
       ...(secrets.OPENROUTER_API_KEY ? { OPENROUTER_API_KEY: secrets.OPENROUTER_API_KEY } : {}),
+      ...(secrets.OPENAI_AUTH_JSON ? { OPENAI_AUTH_JSON: secrets.OPENAI_AUTH_JSON } : {}),
     };
   }
 

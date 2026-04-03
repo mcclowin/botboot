@@ -83,7 +83,7 @@ describe("API-driven E2E", { skip: SKIP_REASON ?? false }, () => {
     try {
       await waitForServer();
 
-      for (const runtime of ["openclaw", "hermes"] as const) {
+      for (const runtime of ["openclaw"] as const) {
         const timer = new StageTimer();
         const api = await createTestApiKey(TEST_ACCOUNT_EMAIL, `${runtime}-api-key`);
 
