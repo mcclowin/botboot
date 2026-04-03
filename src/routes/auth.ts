@@ -23,14 +23,19 @@ auth.post("/magic-link", async (c) => {
   const { email, redirectUrl } = await c.req.json<{ email: string; redirectUrl?: string }>();
   if (!email || !email.includes("@")) return c.json({ error: "Valid email required" }, 400);
 
-  const stytch = await getStytchClient();
-  await stytch.magicLinks.email.loginOrCreate({
-    email,
-    login_magic_link_url: redirectUrl || env.FRONTEND_URL,
-    signup_magic_link_url: redirectUrl || env.FRONTEND_URL,
-  });
-
-  return c.json({ success: true, message: "Magic link sent" });
+  try {
+    const stytch = await getStytchClient();
+    await stytch.magicLinks.email.loginOrCreate({
+      email,
+      login_magic_link_url: redirectUrl || env.FRONTEND_URL,
+      signup_magic_link_url: redirectUrl || env.FRONTEND_URL,
+    });
+    return c.json({ success: true, message: "Magic link sent" });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to send magic link";
+    console.error("Stytch magic-link error:", msg);
+    return c.json({ error: msg }, 500);
+  }
 });
 
 auth.post("/authenticate", async (c) => {
@@ -39,22 +44,28 @@ auth.post("/authenticate", async (c) => {
   const { token } = await c.req.json<{ token: string }>();
   if (!token) return c.json({ error: "Token required" }, 400);
 
-  const stytch = await getStytchClient();
-  const response = await stytch.magicLinks.authenticate({
-    token,
-    session_duration_minutes: 60 * 24 * 7,
-  });
+  try {
+    const stytch = await getStytchClient();
+    const response = await stytch.magicLinks.authenticate({
+      token,
+      session_duration_minutes: 60 * 24 * 7,
+    });
 
-  const stytchUserId = response.user_id;
-  const userEmail = response.user.emails?.[0]?.email || "";
-  const account = await db.getOrCreateAccountByStytch(userEmail, stytchUserId);
+    const stytchUserId = response.user_id;
+    const userEmail = response.user.emails?.[0]?.email || "";
+    const account = await db.getOrCreateAccountByStytch(userEmail, stytchUserId);
 
-  return c.json({
-    success: true,
-    session_token: response.session_token,
-    session_jwt: response.session_jwt,
-    user: { id: account.id, email: userEmail },
-  });
+    return c.json({
+      success: true,
+      session_token: response.session_token,
+      session_jwt: response.session_jwt,
+      user: { id: account.id, email: userEmail },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Authentication failed";
+    console.error("Stytch authenticate error:", msg);
+    return c.json({ error: msg }, 401);
+  }
 });
 
 auth.get("/me", apiKeyAuth, async (c) => {
