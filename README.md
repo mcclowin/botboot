@@ -123,8 +123,21 @@ docker compose up
 ```bash
 curl -X POST http://localhost:3001/v1/auth/api-keys \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-key"}'
-# → {"key": "bb_abc123...", "name": "my-key"}
+  -d '{"email":"you@example.com","name":"tevy2-platform"}'
+# → {"key": "bb_abc123...", "prefix":"bb_abc123", "name": "tevy2-platform", "account_id":"..."}
+```
+
+### Set account-level secrets
+
+```bash
+curl -X PUT http://localhost:3001/v1/secrets \
+  -H "Authorization: Bearer bb_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "OPENAI_AUTH_JSON": "...",
+    "TAVILY_API_KEY": "..."
+  }'
+# → {"success":true,"keys":["OPENAI_AUTH_JSON","TAVILY_API_KEY"]}
 ```
 
 ### Deploy your first agent
