@@ -72,6 +72,31 @@ async function getLogs(apiKey: string, agentId: string) {
   return res.json();
 }
 
+async function apiGet(apiKey: string, path: string) {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  return { status: res.status, data: await res.json() };
+}
+
+async function apiPost(apiKey: string, path: string, body?: unknown) {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: res.status, data: await res.json() };
+}
+
+async function apiPut(apiKey: string, path: string, body: unknown) {
+  const res = await fetch(`${baseUrl()}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, data: await res.json() };
+}
+
 describe("API-driven E2E", { skip: SKIP_REASON ?? false }, () => {
   it("should create OpenClaw agent via BotBoot APIs and reach healthy state", async () => {
     const server = spawn("node", ["--import", "tsx", "src/index.ts"], {
@@ -125,6 +150,87 @@ describe("API-driven E2E", { skip: SKIP_REASON ?? false }, () => {
         timer.set("total_flow_ms", Object.values(timer.summary()).reduce((a, b) => a + Number(b), 0));
         timer.print(`⏱ [${runtime}]`);
         appendTimingArtifact({ kind: "api-e2e", runtime, agentId: created.id, model: TEST_MODEL, ...timer.summary() });
+
+        // ── Tevy2-relevant probes ────────────────────────────────
+        console.log(`\n🧪 Running Tevy2 integration probes on ${created.id}...`);
+
+        // List agents
+        const listRes = await apiGet(api.key, "/v1/agents");
+        assert.equal(listRes.status, 200, "list agents should return 200");
+        assert.ok(listRes.data.agents?.length > 0, "should have at least 1 agent");
+        console.log(`  ✅ GET /v1/agents — ${listRes.data.agents.length} agent(s)`);
+
+        // Get single agent
+        const getRes = await apiGet(api.key, `/v1/agents/${created.id}`);
+        assert.equal(getRes.status, 200, "get agent should return 200");
+        assert.equal(getRes.data.id, created.id);
+        console.log(`  ✅ GET /v1/agents/:id — state: ${getRes.data.state}`);
+
+        // Runtime info
+        const rtRes = await apiGet(api.key, `/v1/agents/${created.id}/runtime`);
+        assert.equal(rtRes.status, 200, "runtime should return 200");
+        assert.equal(rtRes.data.sshReachable, true, "SSH should be reachable");
+        console.log(`  ✅ GET /v1/agents/:id/runtime — gateway: ${rtRes.data.gatewayStatus}, version: ${rtRes.data.version}`);
+
+        // Boot status
+        const bootRes = await apiGet(api.key, `/v1/agents/${created.id}/boot-status`);
+        assert.equal(bootRes.status, 200, "boot-status should return 200");
+        assert.equal(bootRes.data.ready, true, "should be ready");
+        console.log(`  ✅ GET /v1/agents/:id/boot-status — ready: ${bootRes.data.ready}`);
+
+        // Write file
+        const writeRes = await apiPut(api.key, `/v1/agents/${created.id}/files/SOUL.md`, {
+          content: "You are a Tevy2 marketing bot for TestCorp.",
+        });
+        assert.equal(writeRes.status, 200, "file write should return 200");
+        assert.ok(writeRes.data.success);
+        console.log(`  ✅ PUT /v1/agents/:id/files/SOUL.md`);
+
+        // Read file back
+        const readRes = await apiGet(api.key, `/v1/agents/${created.id}/files/SOUL.md`);
+        assert.equal(readRes.status, 200, "file read should return 200");
+        assert.ok(readRes.data.content.includes("Tevy2 marketing bot"), "file content should match");
+        console.log(`  ✅ GET /v1/agents/:id/files/SOUL.md — ${readRes.data.content.length} chars`);
+
+        // Write file with base64 encoding
+        const b64Content = Buffer.from("Base64 encoded brand doc").toString("base64");
+        const writeB64 = await apiPut(api.key, `/v1/agents/${created.id}/files/BRAND.md`, {
+          content: b64Content,
+          encoding: "base64",
+        });
+        assert.equal(writeB64.status, 200, "base64 file write should return 200");
+        const readB64 = await apiGet(api.key, `/v1/agents/${created.id}/files/BRAND.md`);
+        assert.ok(readB64.data.content.includes("Base64 encoded brand doc"));
+        console.log(`  ✅ PUT+GET base64 file write/read`);
+
+        // SSH exec
+        const sshRes = await apiPost(api.key, `/v1/agents/${created.id}/ssh`, {
+          command: "echo hello-from-tevy2",
+        });
+        assert.equal(sshRes.status, 200, "ssh exec should return 200");
+        assert.ok(sshRes.data.stdout.includes("hello-from-tevy2"), "ssh output should match");
+        assert.equal(sshRes.data.exitCode, 0);
+        console.log(`  ✅ POST /v1/agents/:id/ssh — exitCode: ${sshRes.data.exitCode}`);
+
+        // SSH exec — blocked command
+        const blockedRes = await apiPost(api.key, `/v1/agents/${created.id}/ssh`, {
+          command: "rm -rf / --no-preserve-root",
+        });
+        assert.equal(blockedRes.status, 403, "dangerous command should be blocked");
+        console.log(`  ✅ POST /v1/agents/:id/ssh — blocked dangerous command`);
+
+        // Secrets list
+        const secretsRes = await apiGet(api.key, "/v1/secrets");
+        assert.equal(secretsRes.status, 200);
+        console.log(`  ✅ GET /v1/secrets — ${secretsRes.data.keys?.length} key(s)`);
+
+        // Auth /me
+        const meRes = await apiGet(api.key, "/v1/auth/me");
+        assert.equal(meRes.status, 200);
+        assert.ok(meRes.data.email);
+        console.log(`  ✅ GET /v1/auth/me — ${meRes.data.email}`);
+
+        console.log(`\n✨ All Tevy2 probes passed!\n`);
 
         if (TEST_KEEP_ALIVE_MIN > 0) {
           console.log(`⏸️ Keeping ${runtime} agent ${created.id} alive for ${TEST_KEEP_ALIVE_MIN} minute(s) for manual checks.`);
