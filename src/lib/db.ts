@@ -13,7 +13,6 @@ import { hashApiKey } from "./crypto.js";
 export interface Account {
   id: string;
   email: string;
-  stytch_user_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -116,25 +115,6 @@ export const db = {
       SELECT * FROM accounts WHERE id = ${id}
     `;
     return rows[0] || null;
-  },
-
-  async getOrCreateAccountByStytch(email: string, stytchUserId: string): Promise<Account> {
-    // Try by stytch_user_id first, then by email, then create
-    const byStytch = await sql<Account[]>`
-      SELECT * FROM accounts WHERE stytch_user_id = ${stytchUserId} LIMIT 1
-    `;
-    if (byStytch[0]) return byStytch[0];
-
-    // Upsert by email, setting stytch_user_id
-    const rows = await sql<Account[]>`
-      INSERT INTO accounts (email, stytch_user_id)
-      VALUES (${email}, ${stytchUserId})
-      ON CONFLICT (email) DO UPDATE SET
-        stytch_user_id = COALESCE(accounts.stytch_user_id, ${stytchUserId}),
-        updated_at = now()
-      RETURNING *
-    `;
-    return rows[0];
   },
 
   // ── API Keys ───────────────────────────────────────────────────────

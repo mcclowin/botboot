@@ -41,6 +41,7 @@ agents.post("/", async (c) => {
   }>();
 
   if (!body.name) {
+    console.warn("[agents.create] rejected: missing name", { accountId, body });
     return c.json({ error: "name is required" }, 400);
   }
 
@@ -57,9 +58,19 @@ agents.post("/", async (c) => {
 
   // Validate at least one LLM key exists
   if (!secrets.ANTHROPIC_API_KEY && !secrets.OPENROUTER_API_KEY && !secrets.OPENAI_AUTH_JSON) {
-    return c.json({
-      error: "No LLM API key configured. Set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_AUTH_JSON via PUT /v1/secrets",
-    }, 400);
+    const error = "No LLM API key configured. Set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_AUTH_JSON via PUT /v1/secrets";
+    console.warn("[agents.create] rejected: missing llm credential", {
+      accountId,
+      body: {
+        name: body.name,
+        runtime: body.runtime,
+        provider: body.provider,
+        model: body.model,
+        exposedSecrets,
+      },
+      resolvedSecretKeys: Object.keys(secrets),
+    });
+    return c.json({ error }, 400);
   }
 
   // Build cloud-init script
@@ -116,7 +127,17 @@ agents.post("/", async (c) => {
     }, 201);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Agent creation failed";
-    console.error("Agent creation failed:", msg);
+    console.error("[agents.create] failed", {
+      accountId,
+      body: {
+        name: body.name,
+        runtime: runtimeName,
+        provider: provider.name,
+        model: body.model,
+        exposedSecrets,
+      },
+      error: msg,
+    });
     return c.json({ error: msg }, 500);
   }
 });

@@ -5,7 +5,6 @@
 CREATE TABLE IF NOT EXISTS accounts (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email           TEXT UNIQUE,
-  stytch_user_id  TEXT UNIQUE,
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now()
 );
