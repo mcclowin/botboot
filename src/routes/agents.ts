@@ -38,6 +38,7 @@ agents.post("/", async (c) => {
     telegramBotToken?: string;
     exposedSecrets?: string[];
     files?: Record<string, string>;
+    config?: Record<string, unknown>;
   }>();
 
   if (!body.name) {
@@ -111,6 +112,7 @@ agents.post("/", async (c) => {
       ip: machine.ip,
       state: "provisioning",
       config: {
+        ...(body.config || {}),
         model: body.model,
         telegramBotToken,
         files: Object.keys(body.files || {}),
