@@ -56,6 +56,8 @@ agents.post("/", async (c) => {
   // Resolve only explicitly exposed secrets (3-tier cascade)
   const secrets = await resolveSecrets(accountId, undefined, exposedSecrets);
 
+  const telegramBotToken = body.telegramBotToken || secrets.TELEGRAM_BOT_TOKEN;
+
   // Validate at least one LLM key exists
   if (!secrets.ANTHROPIC_API_KEY && !secrets.OPENROUTER_API_KEY && !secrets.OPENAI_AUTH_JSON) {
     const error = "No LLM API key configured. Set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, or OPENAI_AUTH_JSON via PUT /v1/secrets";
@@ -79,7 +81,7 @@ agents.post("/", async (c) => {
     config: {
       name: body.name,
       model: body.model,
-      telegramBotToken: body.telegramBotToken,
+      telegramBotToken,
     },
     secrets,
     files: body.files || {},
@@ -110,7 +112,7 @@ agents.post("/", async (c) => {
       state: "provisioning",
       config: {
         model: body.model,
-        telegramBotToken: body.telegramBotToken,
+        telegramBotToken,
         files: Object.keys(body.files || {}),
       },
       exposed_secrets: exposedSecrets,

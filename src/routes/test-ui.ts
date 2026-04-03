@@ -28,7 +28,7 @@ ui.get("/", (c) => {
 </head>
 <body>
   <h1>BotBoot test wizard</h1>
-  <p class="muted">Internal test page for app-level account secrets, end-user secrets, exposed-secret selection, and agent launch.</p>
+  <p class="muted">Internal test page for app-level account secrets, exposed-secret selection, agent launch, and lightweight API-key dashboard testing.</p>
 
   <div class="card">
     <h2>1. BotBoot API</h2>
@@ -36,6 +36,10 @@ ui.get("/", (c) => {
     <input id="baseUrl" value="http://localhost:3001" />
     <label>API key</label>
     <input id="apiKey" placeholder="bb_..." />
+    <div style="margin-top:12px;">
+      <button onclick="saveApiKey()">Save API key locally</button>
+      <button class="secondary" onclick="loadAgents()">Load agents</button>
+    </div>
   </div>
 
   <div class="card">
@@ -115,11 +119,17 @@ ui.get("/", (c) => {
     <textarea id="user">Name: Mohammed</textarea>
     <div style="margin-top:12px;">
       <button onclick="createAgent()">Create agent</button>
+      <button class="secondary" onclick="pollBootStatus()">Boot status</button>
       <button class="secondary" onclick="agentHealth()">Check agent health</button>
       <button class="secondary" onclick="agentLogs()">Fetch agent logs</button>
     </div>
     <label>Last created / target agent id</label>
     <input id="agentId" placeholder="agent uuid" />
+  </div>
+
+  <div class="card">
+    <h2>Agents</h2>
+    <pre id="agentsOut"></pre>
   </div>
 
   <div class="card">
@@ -129,9 +139,24 @@ ui.get("/", (c) => {
 
 <script>
 const out = document.getElementById('output');
+const agentsOut = document.getElementById('agentsOut');
+let bootPollTimer = null;
+
+(function init() {
+  const storedBaseUrl = localStorage.getItem('botboot.baseUrl');
+  const storedApiKey = localStorage.getItem('botboot.apiKey');
+  if (storedBaseUrl) document.getElementById('baseUrl').value = storedBaseUrl;
+  if (storedApiKey) document.getElementById('apiKey').value = storedApiKey;
+})();
+
 function log(title, data) {
   const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
   out.textContent = '[' + new Date().toISOString() + '] ' + title + '\n' + text + '\n\n' + out.textContent;
+}
+function saveApiKey() {
+  localStorage.setItem('botboot.baseUrl', document.getElementById('baseUrl').value.trim());
+  localStorage.setItem('botboot.apiKey', document.getElementById('apiKey').value.trim());
+  log('Saved API key + base URL locally', { ok: true });
 }
 function headers() {
   return {
@@ -173,6 +198,7 @@ async function createAgent() {
     name: document.getElementById('agentName').value.trim(),
     runtime: 'openclaw',
     model: document.getElementById('model').value.trim(),
+    telegramBotToken: document.getElementById('telegram').value.trim() || undefined,
     exposedSecrets,
     files: {
       'SOUL.md': document.getElementById('soul').value,
@@ -181,8 +207,45 @@ async function createAgent() {
   };
   const res = await fetch(document.getElementById('baseUrl').value + '/v1/agents', { method:'POST', headers: headers(), body: JSON.stringify(payload) });
   const data = await res.json();
-  if (data && data.id) document.getElementById('agentId').value = data.id;
+  if (data && data.id) {
+    document.getElementById('agentId').value = data.id;
+    startBootPolling(data.id);
+  }
   log('Create agent → ' + res.status, data);
+  if (res.ok) loadAgents();
+}
+async function loadAgents() {
+  const res = await fetch(document.getElementById('baseUrl').value + '/v1/agents', { headers: headers() });
+  const data = await res.json();
+  agentsOut.textContent = JSON.stringify(data, null, 2);
+  log('Load agents → ' + res.status, data);
+}
+async function pollBootStatus() {
+  const id = document.getElementById('agentId').value.trim();
+  const res = await fetch(document.getElementById('baseUrl').value + '/v1/agents/' + id + '/boot-status', { headers: headers() });
+  const data = await res.json();
+  log('Boot status → ' + res.status, data);
+  return data;
+}
+function startBootPolling(id) {
+  if (bootPollTimer) clearInterval(bootPollTimer);
+  let attempts = 0;
+  bootPollTimer = setInterval(async () => {
+    attempts += 1;
+    document.getElementById('agentId').value = id;
+    const data = await pollBootStatus();
+    if (data && data.ready) {
+      clearInterval(bootPollTimer);
+      bootPollTimer = null;
+      log('Boot polling stopped', { reason: 'ready', id });
+      loadAgents();
+    }
+    if (attempts >= 120) {
+      clearInterval(bootPollTimer);
+      bootPollTimer = null;
+      log('Boot polling stopped', { reason: 'timeout', id });
+    }
+  }, 5000);
 }
 async function agentHealth() {
   const id = document.getElementById('agentId').value.trim();
