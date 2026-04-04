@@ -255,23 +255,50 @@ agents.get("/:id/runtime", async (c) => {
   const agent = await db.getAgent(accountId, c.req.param("id"));
   if (!agent || !agent.ip) return c.json({ error: "Agent not found" }, 404);
 
-  const runtime = getRuntime(agent.runtime);
-  const reachable = await ssh.ping(agent.ip);
+  try {
+    const runtimeInfo = await getRuntimeInfo(agent.ip, agent.runtime);
+    return c.json(runtimeInfo);
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : "Runtime check failed" }, 500);
+  }
+});
 
+// ── POST /v1/agents/:id/update ────────────────────────────────────────
+
+agents.post("/:id/update", async (c) => {
+  const accountId = c.get("accountId");
+  const agent = await db.getAgent(accountId, c.req.param("id"));
+  if (!agent || !agent.ip) return c.json({ error: "Agent not found" }, 404);
+
+  const reachable = await ssh.ping(agent.ip);
   if (!reachable) {
-    return c.json({ sshReachable: false, gatewayStatus: "unreachable", version: null });
+    return c.json({ error: "Agent unreachable over SSH" }, 503);
   }
 
-  const [statusResult, versionResult] = await Promise.all([
-    ssh.exec(agent.ip, runtime.statusCommand()),
-    ssh.exec(agent.ip, runtime.versionCommand()),
-  ]);
+  const updateCommand = [
+    "if [ -x /opt/tevy/scripts/update.sh ]; then sudo /opt/tevy/scripts/update.sh",
+    "elif [ -x /home/agent/update.sh ]; then sudo /home/agent/update.sh",
+    "else echo 'No update script found'; exit 127",
+    "fi",
+  ].join("; ");
 
+  const updateResult = await ssh.exec(agent.ip, updateCommand, { timeoutMs: 10 * 60_000 });
+  if (updateResult.exitCode !== 0) {
+    return c.json({
+      error: "Update failed",
+      stdout: updateResult.stdout,
+      stderr: updateResult.stderr,
+      exitCode: updateResult.exitCode,
+    }, 500);
+  }
+
+  const runtimeInfo = await getRuntimeInfo(agent.ip, agent.runtime);
   return c.json({
-    sshReachable: true,
-    gatewayStatus: statusResult.stdout.trim(),
-    version: versionResult.stdout.trim(),
-    runtime: agent.runtime,
+    success: true,
+    stdout: updateResult.stdout,
+    stderr: updateResult.stderr,
+    exitCode: updateResult.exitCode,
+    runtime: runtimeInfo,
   });
 });
 
@@ -351,6 +378,41 @@ agents.post("/:id/ssh", async (c) => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────
+
+async function getRuntimeInfo(ip: string, runtimeName: string) {
+  const runtime = getRuntime(runtimeName);
+  const reachable = await ssh.ping(ip);
+
+  if (!reachable) {
+    return {
+      sshReachable: false,
+      gatewayStatus: "unreachable",
+      version: null,
+      openclawVersion: null,
+      imageRevision: null,
+      updateScriptPresent: false,
+      runtime: runtimeName,
+    };
+  }
+
+  const [statusResult, versionResult, imageRevisionResult, updateScriptResult] = await Promise.all([
+    ssh.exec(ip, runtime.statusCommand()),
+    ssh.exec(ip, runtime.versionCommand()),
+    ssh.exec(ip, "cat /opt/tevy/VERSION 2>/dev/null || echo unknown"),
+    ssh.exec(ip, "if [ -x /opt/tevy/scripts/update.sh ] || [ -x /home/agent/update.sh ]; then echo yes; else echo no; fi"),
+  ]);
+
+  const version = versionResult.stdout.trim() || null;
+  return {
+    sshReachable: true,
+    gatewayStatus: statusResult.stdout.trim(),
+    version,
+    openclawVersion: version,
+    imageRevision: imageRevisionResult.stdout.trim() || null,
+    updateScriptPresent: updateScriptResult.stdout.trim() === "yes",
+    runtime: runtimeName,
+  };
+}
 
 async function resolveSecrets(accountId: string, agentId?: string, exposedKeys?: string[]): Promise<Record<string, string>> {
   const { env: e } = await import("../env.js");
