@@ -17,6 +17,7 @@ import authRoutes from "./routes/auth.js";
 import usageRoutes from "./routes/usage.js";
 import diagnosticsRoutes from "./routes/diagnostics.js";
 import testUiRoutes from "./routes/test-ui.js";
+import { startUsagePoller } from "./lib/usage-poller.js";
 
 const app = new Hono();
 
@@ -58,5 +59,10 @@ app.onError((err, c) => {
 
 // Start
 console.log(`🤖⚡ BotBoot starting on port ${env.PORT}`);
+startUsagePoller({
+  enabled: env.USAGE_POLL_ENABLED,
+  intervalMinutes: env.USAGE_POLL_INTERVAL_MINUTES,
+  startupDelayMs: env.USAGE_POLL_STARTUP_DELAY_MS,
+});
 serve({ fetch: app.fetch, port: env.PORT, hostname: "0.0.0.0" });
 console.log(`✅ BotBoot running at http://localhost:${env.PORT}`);

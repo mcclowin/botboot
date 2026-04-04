@@ -36,6 +36,11 @@ export const env = {
   PLATFORM_TAVILY_KEY: optional("PLATFORM_TAVILY_KEY", ""),
   PLATFORM_FIRECRAWL_KEY: optional("PLATFORM_FIRECRAWL_KEY", ""),
 
+  // Usage polling
+  USAGE_POLL_ENABLED: optional("USAGE_POLL_ENABLED", "true") === "true",
+  USAGE_POLL_INTERVAL_MINUTES: parseInt(optional("USAGE_POLL_INTERVAL_MINUTES", "10")),
+  USAGE_POLL_STARTUP_DELAY_MS: parseInt(optional("USAGE_POLL_STARTUP_DELAY_MS", "15000")),
+
   // Admin
   ADMIN_API_KEY: optional("ADMIN_API_KEY", ""),
 };

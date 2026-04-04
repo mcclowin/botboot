@@ -197,6 +197,15 @@ export const db = {
     return rows.map((r) => ({ ...r, exposed_secrets: r.exposed_secrets || [] }));
   },
 
+  async listAllActiveAgents(): Promise<Agent[]> {
+    const rows = await sql<Agent[]>`
+      SELECT * FROM agents
+      WHERE state != 'deleted' AND ip IS NOT NULL
+      ORDER BY created_at DESC
+    `;
+    return rows.map((r) => ({ ...r, exposed_secrets: r.exposed_secrets || [] }));
+  },
+
   async getAgent(accountId: string, agentId: string): Promise<Agent | null> {
     const rows = await sql<Agent[]>`
       SELECT * FROM agents

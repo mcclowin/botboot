@@ -11,6 +11,7 @@ import { Hono } from 'hono';
 import { apiKeyAuth } from '../middleware/auth.js';
 import { db } from '../lib/db.js';
 import { pollAndStoreAgentUsage } from '../lib/usage.js';
+import { getUsagePollerStatus, runUsagePollCycle } from '../lib/usage-poller.js';
 import type { AuthEnv } from '../lib/types.js';
 
 const usage = new Hono<AuthEnv>();
@@ -21,6 +22,10 @@ usage.get('/', async (c) => {
   const days = parseInt(c.req.query('days') || '30', 10);
   const summary = await db.getAccountUsageSummary(accountId, days);
   return c.json(summary);
+});
+
+usage.get('/poller/status', async (c) => {
+  return c.json(getUsagePollerStatus());
 });
 
 usage.post('/poll', async (c) => {
@@ -38,6 +43,11 @@ usage.post('/poll', async (c) => {
     }
   }
   return c.json({ polled: results.length, results });
+});
+
+usage.post('/poller/run', async (c) => {
+  const status = await runUsagePollCycle();
+  return c.json({ success: true, status });
 });
 
 usage.get('/:id/usage', async (c) => {
