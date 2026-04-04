@@ -276,11 +276,11 @@ agents.post("/:id/update", async (c) => {
   }
 
   const updateCommand = [
-    "if [ -x /opt/tevy/scripts/update.sh ]; then sudo /opt/tevy/scripts/update.sh",
-    "elif [ -x /home/agent/update.sh ]; then sudo /home/agent/update.sh",
-    "else echo 'No update script found'; exit 127",
-    "fi",
-  ].join("; ");
+    "set -e",
+    "sudo openclaw update",
+    "sudo systemctl restart botboot-agent",
+    "sudo systemctl is-active botboot-agent",
+  ].join(" && ");
 
   const updateResult = await ssh.exec(agent.ip, updateCommand, { timeoutMs: 10 * 60_000 });
   if (updateResult.exitCode !== 0) {
@@ -395,11 +395,9 @@ async function getRuntimeInfo(ip: string, runtimeName: string) {
     };
   }
 
-  const [statusResult, versionResult, imageRevisionResult, updateScriptResult] = await Promise.all([
+  const [statusResult, versionResult] = await Promise.all([
     ssh.exec(ip, runtime.statusCommand()),
     ssh.exec(ip, runtime.versionCommand()),
-    ssh.exec(ip, "cat /opt/tevy/VERSION 2>/dev/null || echo unknown"),
-    ssh.exec(ip, "if [ -x /opt/tevy/scripts/update.sh ] || [ -x /home/agent/update.sh ]; then echo yes; else echo no; fi"),
   ]);
 
   const version = versionResult.stdout.trim() || null;
@@ -408,8 +406,8 @@ async function getRuntimeInfo(ip: string, runtimeName: string) {
     gatewayStatus: statusResult.stdout.trim(),
     version,
     openclawVersion: version,
-    imageRevision: imageRevisionResult.stdout.trim() || null,
-    updateScriptPresent: updateScriptResult.stdout.trim() === "yes",
+    imageRevision: null,
+    updateScriptPresent: true,
     runtime: runtimeName,
   };
 }
