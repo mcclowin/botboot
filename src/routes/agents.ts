@@ -314,36 +314,99 @@ agents.get("/:id/boot-status", async (c) => {
     const machine = await provider.getMachine(agent.server_id);
 
     if (machine.state === "initializing" || machine.state === "starting") {
-      return c.json({ stage: "provisioning", progress: 20, message: "Server starting...", ready: false });
+      return c.json({
+        stage: "provisioning",
+        progress: 20,
+        message: "Server starting...",
+        ready: false,
+        providerState: machine.state,
+        ip: agent.ip || machine.ip,
+      });
     }
 
     if (machine.state === "off" || machine.state === "stopping") {
-      return c.json({ stage: "offline", progress: 0, message: `Server is ${machine.state}`, ready: false });
+      return c.json({
+        stage: "offline",
+        progress: 0,
+        message: `Server is ${machine.state}`,
+        ready: false,
+        providerState: machine.state,
+        ip: agent.ip || machine.ip,
+      });
     }
 
     const ip = agent.ip || machine.ip;
-    const reachable = await ssh.ping(ip);
-    if (!reachable) {
-      return c.json({ stage: "booting", progress: 40, message: "Waiting for SSH...", ready: false });
+    const rootReachable = await ssh.ping(ip, { user: "root" });
+    const agentReachable = rootReachable ? await ssh.ping(ip, { user: "agent" }) : false;
+
+    if (!rootReachable) {
+      return c.json({
+        stage: "booting",
+        progress: 40,
+        message: machine.state === "running"
+          ? "Server is running, but SSH as root is not reachable yet"
+          : "Waiting for SSH...",
+        ready: false,
+        providerState: machine.state,
+        ip,
+        ssh: { root: false, agent: false },
+      });
     }
 
-    // Check if provision is done
-    const provResult = await ssh.exec(ip, "tail -3 /var/log/botboot-provision.log 2>/dev/null || echo 'no log'", { user: "root" });
-    if (provResult.stdout.includes("Provisioning complete")) {
-      const runtime = getRuntime(agent.runtime);
-      const statusResult = await ssh.exec(ip, runtime.statusCommand());
-      const status = statusResult.stdout.trim();
+    const runtime = getRuntime(agent.runtime);
+    const provResult = await ssh.exec(ip, "tail -20 /var/log/botboot-provision.log 2>/dev/null || echo 'no provision log yet'", { user: "root" });
+    const provisionLog = provResult.stdout.trim();
+    const provisioningComplete = provisionLog.includes("Provisioning complete");
 
-      if (status === "active") {
-        if (agent.state === "provisioning") {
-          await db.updateAgent(agent.id, { state: "running", ip });
-        }
-        return c.json({ stage: "ready", progress: 100, message: "Agent online!", ready: true });
+    const statusResult = await ssh.exec(ip, runtime.statusCommand(), { user: "root" });
+    const runtimeStatus = statusResult.stdout.trim() || "unknown";
+
+    if (runtimeStatus === "active") {
+      if (agent.state === "provisioning") {
+        await db.updateAgent(agent.id, { state: "running", ip });
       }
-      return c.json({ stage: "gateway", progress: 80, message: "Gateway starting...", ready: false });
+      return c.json({
+        stage: "ready",
+        progress: 100,
+        message: "Agent online!",
+        ready: true,
+        providerState: machine.state,
+        ip,
+        ssh: { root: true, agent: agentReachable },
+        runtimeStatus,
+        provisioningComplete,
+      });
     }
 
-    return c.json({ stage: "installing", progress: 60, message: "Installing agent...", ready: false });
+    if (!provisioningComplete) {
+      return c.json({
+        stage: "installing",
+        progress: agentReachable ? 70 : 60,
+        message: agentReachable
+          ? "Provisioning in progress, runtime not ready yet"
+          : "Provisioning in progress, agent user not ready yet",
+        ready: false,
+        providerState: machine.state,
+        ip,
+        ssh: { root: true, agent: agentReachable },
+        runtimeStatus,
+        provisioningComplete,
+        provisionLog,
+      });
+    }
+
+    return c.json({
+      stage: "gateway",
+      progress: 85,
+      message: `Runtime service status: ${runtimeStatus}`,
+      ready: false,
+      providerState: machine.state,
+      ip,
+      ssh: { root: true, agent: agentReachable },
+      runtimeStatus,
+      provisioningComplete,
+      provisionLog,
+    });
   } catch (err: unknown) {
     return c.json({ stage: "error", progress: 0, message: err instanceof Error ? err.message : "Check failed", ready: false });
   }

@@ -13,8 +13,12 @@ const SSH_PRIVATE_KEY_PATH = (() => {
   const privateKey = process.env.HETZNER_SSH_PRIVATE_KEY;
   if (!privateKey) return env.HETZNER_SSH_KEY_PATH;
 
+  const normalizedKey = privateKey.includes("\\n") && !privateKey.includes("\n")
+    ? privateKey.replace(/\\n/g, "\n")
+    : privateKey;
+
   const tempKeyPath = join(tmpdir(), `hetzner-ssh-key-${process.pid}`);
-  writeFileSync(tempKeyPath, privateKey, { mode: 0o600 });
+  writeFileSync(tempKeyPath, normalizedKey, { mode: 0o600 });
   return tempKeyPath;
 })();
 
@@ -58,9 +62,12 @@ export async function exec(
   });
 }
 
-export async function ping(ip: string): Promise<boolean> {
+export async function ping(ip: string, opts?: { user?: string; timeoutMs?: number }): Promise<boolean> {
   try {
-    const result = await exec(ip, "echo ok", { timeoutMs: 10_000 });
+    const result = await exec(ip, "echo ok", {
+      user: opts?.user,
+      timeoutMs: opts?.timeoutMs || 10_000,
+    });
     return result.stdout.trim() === "ok";
   } catch {
     return false;
