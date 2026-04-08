@@ -1,6 +1,8 @@
 -- BotBoot Database Schema
 -- PostgreSQL 15+
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Accounts
 CREATE TABLE IF NOT EXISTS accounts (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
