@@ -12,6 +12,8 @@
 
 import type { RuntimeAdapter, AgentConfig } from "../runtimes/types.js";
 
+const IMAGE_REVISION = process.env.BOTBOOT_IMAGE_REVISION || process.env.RAILWAY_GIT_COMMIT_SHA || "unknown";
+
 export interface CloudInitOpts {
   runtime: RuntimeAdapter;
   config: AgentConfig;
@@ -48,6 +50,10 @@ export function buildCloudInit(opts: CloudInitOpts): string {
     "# ── Secrets directory ────────────────────────────────────",
     "mkdir -p /etc/botboot",
     "chmod 700 /etc/botboot",
+    `echo ${JSON.stringify(IMAGE_REVISION)} > /etc/botboot/image-revision`,
+    "chmod 644 /etc/botboot/image-revision",
+    "date -u +%Y-%m-%dT%H:%M:%SZ > /etc/botboot/provisioned-at",
+    "chmod 644 /etc/botboot/provisioned-at",
     "",
     "# ── Write config ────────────────────────────────────────",
     ...runtime.writeConfigCommands(config, secrets),

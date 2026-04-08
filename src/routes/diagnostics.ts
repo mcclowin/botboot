@@ -29,7 +29,8 @@ diagnostics.get("/:id/health", async (c) => {
   }
 
   const ip = agent.ip || machine?.ip || null;
-  const sshReachable = ip ? await ssh.ping(ip) : false;
+  const sshRootReachable = ip ? await ssh.ping(ip, { user: "root" }) : false;
+  const sshAgentReachable = ip && sshRootReachable ? await ssh.ping(ip, { user: "agent" }) : false;
 
   let provisionTail = "";
   let gatewayStatus = "unreachable";
@@ -39,7 +40,7 @@ diagnostics.get("/:id/health", async (c) => {
   let runtimeChecks: Record<string, unknown> = {};
   let recentErrors: string[] = [];
 
-  if (ip && sshReachable) {
+  if (ip && sshRootReachable) {
     try {
       const [prov, status, ver, journal] = await Promise.all([
         ssh.exec(ip, "tail -20 /var/log/botboot-provision.log 2>/dev/null || echo 'no log'", { user: "root" }),
@@ -100,8 +101,9 @@ diagnostics.get("/:id/health", async (c) => {
       ip,
     },
     machine: machine || null,
+    providerState: machine?.state || "unknown",
     providerError,
-    ssh: { reachable: sshReachable },
+    ssh: { reachable: sshRootReachable, root: sshRootReachable, agent: sshAgentReachable },
     provision: {
       complete: provisionTail.includes("Provisioning complete"),
       tail: provisionTail,

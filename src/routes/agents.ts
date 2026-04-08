@@ -253,10 +253,19 @@ agents.post("/:id/stop", async (c) => {
 agents.get("/:id/runtime", async (c) => {
   const accountId = c.get("accountId");
   const agent = await db.getAgent(accountId, c.req.param("id"));
-  if (!agent || !agent.ip) return c.json({ error: "Agent not found" }, 404);
+  if (!agent) return c.json({ error: "Agent not found" }, 404);
 
   try {
-    const runtimeInfo = await getRuntimeInfo(agent.ip, agent.runtime);
+    const provider = getProvider(agent.provider);
+    const machine = agent.server_id ? await provider.getMachine(agent.server_id) : null;
+    const ip = agent.ip || machine?.ip;
+    if (!ip) return c.json({ error: "Agent has no IP yet" }, 404);
+
+    const runtimeInfo = await getRuntimeInfo({
+      ip,
+      runtimeName: agent.runtime,
+      providerState: machine?.state || "unknown",
+    });
     return c.json(runtimeInfo);
   } catch (err: unknown) {
     return c.json({ error: err instanceof Error ? err.message : "Runtime check failed" }, 500);
@@ -270,7 +279,7 @@ agents.post("/:id/update", async (c) => {
   const agent = await db.getAgent(accountId, c.req.param("id"));
   if (!agent || !agent.ip) return c.json({ error: "Agent not found" }, 404);
 
-  const reachable = await ssh.ping(agent.ip);
+  const reachable = await ssh.ping(agent.ip, { user: "root" });
   if (!reachable) {
     return c.json({ error: "Agent unreachable over SSH" }, 503);
   }
@@ -292,7 +301,7 @@ agents.post("/:id/update", async (c) => {
     }, 500);
   }
 
-  const runtimeInfo = await getRuntimeInfo(agent.ip, agent.runtime);
+  const runtimeInfo = await getRuntimeInfo({ ip: agent.ip, runtimeName: agent.runtime, providerState: "unknown" });
   return c.json({
     success: true,
     stdout: updateResult.stdout,
@@ -442,13 +451,17 @@ agents.post("/:id/ssh", async (c) => {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-async function getRuntimeInfo(ip: string, runtimeName: string) {
+async function getRuntimeInfo(opts: { ip: string; runtimeName: string; providerState?: string }) {
+  const { ip, runtimeName, providerState = "unknown" } = opts;
   const runtime = getRuntime(runtimeName);
-  const reachable = await ssh.ping(ip);
+  const rootReachable = await ssh.ping(ip, { user: "root" });
+  const agentReachable = rootReachable ? await ssh.ping(ip, { user: "agent" }) : false;
 
-  if (!reachable) {
+  if (!rootReachable) {
     return {
       sshReachable: false,
+      ssh: { root: false, agent: false },
+      providerState,
       gatewayStatus: "unreachable",
       version: null,
       openclawVersion: null,
@@ -458,19 +471,26 @@ async function getRuntimeInfo(ip: string, runtimeName: string) {
     };
   }
 
-  const [statusResult, versionResult] = await Promise.all([
-    ssh.exec(ip, runtime.statusCommand()),
-    ssh.exec(ip, runtime.versionCommand()),
+  const [statusResult, versionResult, imageRevisionResult, updateScriptResult] = await Promise.all([
+    ssh.exec(ip, runtime.statusCommand(), { user: "root" }),
+    ssh.exec(ip, runtime.versionCommand(), { user: "root" }),
+    ssh.exec(ip, "cat /etc/botboot/image-revision 2>/dev/null || true", { user: "root" }),
+    ssh.exec(ip, "if [ -x /opt/botboot/update.sh ] || [ -x /usr/local/bin/botboot-update ] || [ -x /home/agent/bin/update.sh ]; then echo yes; else echo no; fi", { user: "root" }),
   ]);
 
   const version = versionResult.stdout.trim() || null;
+  const imageRevision = imageRevisionResult.stdout.trim() || null;
+  const updateScriptPresent = updateScriptResult.stdout.trim() === "yes";
+
   return {
     sshReachable: true,
-    gatewayStatus: statusResult.stdout.trim(),
+    ssh: { root: true, agent: agentReachable },
+    providerState,
+    gatewayStatus: statusResult.stdout.trim() || "unknown",
     version,
     openclawVersion: version,
-    imageRevision: null,
-    updateScriptPresent: true,
+    imageRevision,
+    updateScriptPresent,
     runtime: runtimeName,
   };
 }
