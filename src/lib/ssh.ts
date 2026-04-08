@@ -4,7 +4,19 @@
  */
 
 import { execFile } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { env } from "../env.js";
+
+const SSH_PRIVATE_KEY_PATH = (() => {
+  const privateKey = process.env.HETZNER_SSH_PRIVATE_KEY;
+  if (!privateKey) return env.HETZNER_SSH_KEY_PATH;
+
+  const tempKeyPath = join(tmpdir(), `hetzner-ssh-key-${process.pid}`);
+  writeFileSync(tempKeyPath, privateKey, { mode: 0o600 });
+  return tempKeyPath;
+})();
 
 const SSH_OPTS = [
   "-o", "StrictHostKeyChecking=accept-new",
@@ -16,8 +28,8 @@ const SSH_OPTS = [
 
 function sshArgs(ip: string, user = "agent"): string[] {
   const args = [...SSH_OPTS];
-  if (env.HETZNER_SSH_KEY_PATH) {
-    args.push("-i", env.HETZNER_SSH_KEY_PATH);
+  if (SSH_PRIVATE_KEY_PATH) {
+    args.push("-i", SSH_PRIVATE_KEY_PATH);
   }
   args.push(`${user}@${ip}`);
   return args;
