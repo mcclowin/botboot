@@ -83,7 +83,7 @@ files.put("/:id/files/*", async (c) => {
 
   try {
     const decoded = encoding === "base64" ? Buffer.from(content, "base64").toString("utf8") : content;
-    await ssh.writeFile(agent.ip, fullPath, decoded);
+    await ssh.writeFile(agent.ip, fullPath, decoded, { user: "root" });
     return c.json({ success: true, path: filePath });
   } catch (err: unknown) {
     return c.json({ error: err instanceof Error ? err.message : "Write failed" }, 500);

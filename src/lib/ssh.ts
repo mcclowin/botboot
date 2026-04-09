@@ -86,14 +86,19 @@ export async function readFile(ip: string, path: string): Promise<string> {
   return result.stdout;
 }
 
-export async function writeFile(ip: string, path: string, content: string): Promise<void> {
+export async function writeFile(
+  ip: string,
+  path: string,
+  content: string,
+  opts?: { user?: string; timeoutMs?: number }
+): Promise<void> {
   if (path.includes("..")) {
     throw new Error("Invalid file path");
   }
   const dir = path.substring(0, path.lastIndexOf("/"));
   const b64 = Buffer.from(content).toString("base64");
   const cmd = `mkdir -p ${JSON.stringify(dir)} && echo ${JSON.stringify(b64)} | base64 -d > ${JSON.stringify(path)}`;
-  const result = await exec(ip, cmd);
+  const result = await exec(ip, cmd, { user: opts?.user, timeoutMs: opts?.timeoutMs });
   if (result.exitCode !== 0) {
     throw new Error(`Failed to write ${path}: ${result.stderr}`);
   }
