@@ -290,12 +290,12 @@ agents.post("/:id/update", async (c) => {
 
   const updateCommand = [
     "set -e",
-    "sudo openclaw update",
-    "sudo systemctl restart botboot-agent",
-    "sudo systemctl is-active botboot-agent",
+    "openclaw update",
+    "systemctl restart botboot-agent",
+    "systemctl is-active botboot-agent",
   ].join(" && ");
 
-  const updateResult = await ssh.exec(agent.ip, updateCommand, { timeoutMs: 10 * 60_000 });
+  const updateResult = await ssh.exec(agent.ip, updateCommand, { user: "root", timeoutMs: 10 * 60_000 });
   if (updateResult.exitCode !== 0) {
     return c.json({
       error: "Update failed",
