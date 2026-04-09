@@ -32,9 +32,18 @@ files.get("/:id/files/*", async (c) => {
   const fullPath = `${runtime.workspacePath()}/${filePath}`;
 
   try {
-    const result = await ssh.exec(agent.ip, `cat ${JSON.stringify(fullPath)}`);
+    const result = await ssh.exec(agent.ip, `cat ${JSON.stringify(fullPath)}`, { user: "root" });
     if (result.exitCode !== 0) {
-      return c.json({ error: `File not found: ${filePath}` }, 404);
+      const stderr = result.stderr.trim();
+      if (/No such file|cannot stat|not found/i.test(stderr)) {
+        return c.json({ error: `File not found: ${filePath}` }, 404);
+      }
+      return c.json({
+        error: "Failed to read file on agent",
+        path: filePath,
+        stderr,
+        exitCode: result.exitCode,
+      }, 502);
     }
     return c.json({ path: filePath, content: result.stdout });
   } catch (err: unknown) {
