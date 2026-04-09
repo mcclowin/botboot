@@ -15,6 +15,25 @@ import type { AuthEnv } from "../lib/types.js";
 const files = new Hono<AuthEnv>();
 files.use("*", apiKeyAuth);
 
+export function classifyFileReadResult(filePath: string, result: { stderr: string; exitCode: number | string }) {
+  const stderr = result.stderr.trim();
+  if (/No such file|cannot stat|not found/i.test(stderr)) {
+    return {
+      status: 404,
+      body: { error: `File not found: ${filePath}` },
+    };
+  }
+  return {
+    status: 502,
+    body: {
+      error: "Failed to read file on agent",
+      path: filePath,
+      stderr,
+      exitCode: result.exitCode,
+    },
+  };
+}
+
 files.get("/:id/files/*", async (c) => {
   const accountId = c.get("accountId");
   const agentId = c.req.param("id");
@@ -34,16 +53,8 @@ files.get("/:id/files/*", async (c) => {
   try {
     const result = await ssh.exec(agent.ip, `cat ${JSON.stringify(fullPath)}`, { user: "root" });
     if (result.exitCode !== 0) {
-      const stderr = result.stderr.trim();
-      if (/No such file|cannot stat|not found/i.test(stderr)) {
-        return c.json({ error: `File not found: ${filePath}` }, 404);
-      }
-      return c.json({
-        error: "Failed to read file on agent",
-        path: filePath,
-        stderr,
-        exitCode: result.exitCode,
-      }, 502);
+      const failure = classifyFileReadResult(filePath, result);
+      return c.json(failure.body, failure.status as 404 | 502);
     }
     return c.json({ path: filePath, content: result.stdout });
   } catch (err: unknown) {

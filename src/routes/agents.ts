@@ -26,6 +26,24 @@ import type { AuthEnv } from "../lib/types.js";
 const agents = new Hono<AuthEnv>();
 agents.use("*", apiKeyAuth);
 
+export async function enrichAgentsWithLiveStatus<T extends { server_id: string | null; provider: string }>(
+  agentList: T[],
+  providerResolver: (name?: string) => { getMachine(machineId: string): Promise<{ state: string }> }
+) {
+  return Promise.all(
+    agentList.map(async (agent) => {
+      try {
+        if (!agent.server_id) return { ...agent, liveStatus: "unknown" };
+        const provider = providerResolver(agent.provider);
+        const machine = await provider.getMachine(agent.server_id);
+        return { ...agent, liveStatus: machine.state };
+      } catch {
+        return { ...agent, liveStatus: "unknown" };
+      }
+    })
+  );
+}
+
 // ── POST /v1/agents ────────────────────────────────────────────────────
 
 agents.post("/", async (c) => {
@@ -151,21 +169,7 @@ agents.post("/", async (c) => {
 agents.get("/", async (c) => {
   const accountId = c.get("accountId");
   const agentList = await db.listAgents(accountId);
-
-  // Enrich with live status using each agent's actual provider
-  const enriched = await Promise.all(
-    agentList.map(async (agent) => {
-      try {
-        if (!agent.server_id) return { ...agent, liveStatus: "unknown" };
-        const provider = getProvider(agent.provider);
-        const machine = await provider.getMachine(agent.server_id);
-        return { ...agent, liveStatus: machine.state };
-      } catch {
-        return { ...agent, liveStatus: "unknown" };
-      }
-    })
-  );
-
+  const enriched = await enrichAgentsWithLiveStatus(agentList, getProvider as any);
   return c.json({ agents: enriched });
 });
 
