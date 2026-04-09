@@ -152,12 +152,12 @@ agents.get("/", async (c) => {
   const accountId = c.get("accountId");
   const agentList = await db.listAgents(accountId);
 
-  // Enrich with live status
-  const provider = getProvider();
+  // Enrich with live status using each agent's actual provider
   const enriched = await Promise.all(
     agentList.map(async (agent) => {
       try {
         if (!agent.server_id) return { ...agent, liveStatus: "unknown" };
+        const provider = getProvider(agent.provider);
         const machine = await provider.getMachine(agent.server_id);
         return { ...agent, liveStatus: machine.state };
       } catch {
